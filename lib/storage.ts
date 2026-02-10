@@ -7,6 +7,9 @@ export type PeerRecord = {
   version: string;
   height: number;
   last_seen: number;
+  first_seen?: number;
+  seen_count?: number;
+  stats_port?: number;
   latency_ms?: number;
   signature: string;
 };
@@ -74,12 +77,19 @@ function historyIndexKey(): string {
 
 export async function savePeer(peer: PeerRecord): Promise<void> {
   if (!kvEnabled()) {
-    memoryPeers.set(peer.node_id, peer);
+    const existing = memoryPeers.get(peer.node_id);
+    const firstSeen = existing?.first_seen ?? peer.last_seen;
+    const seenCount = (existing?.seen_count ?? 0) + 1;
+    memoryPeers.set(peer.node_id, { ...peer, first_seen: firstSeen, seen_count: seenCount });
     return;
   }
 
   const key = peerKey(peer.node_id);
-  await kv.set(key, peer, { ex: PEER_TTL_SECONDS });
+  const existing = (await kv.get(key)) as PeerRecord | null;
+  const firstSeen = existing?.first_seen ?? peer.last_seen;
+  const seenCount = (existing?.seen_count ?? 0) + 1;
+  const record: PeerRecord = { ...peer, first_seen: firstSeen, seen_count: seenCount };
+  await kv.set(key, record, { ex: PEER_TTL_SECONDS });
   await kv.sadd(peerIndexKey(), key);
   await kv.expire(peerIndexKey(), PEER_TTL_SECONDS);
 }
@@ -87,18 +97,32 @@ export async function savePeer(peer: PeerRecord): Promise<void> {
 export async function listPeers(): Promise<PeerRecord[]> {
   if (!kvEnabled()) {
     const now = Math.floor(Date.now() / 1000);
-    const peers = Array.from(memoryPeers.values()).filter(
-      (p) => now - p.last_seen <= PEER_TTL_SECONDS
-    );
-    return peers;
+    for (const [nodeId, peer] of memoryPeers.entries()) {
+      if (now - peer.last_seen > PEER_TTL_SECONDS) {
+        memoryPeers.delete(nodeId);
+      }
+    }
+    return Array.from(memoryPeers.values()).map((peer) => ({
+      ...peer,
+      first_seen: peer.first_seen ?? peer.last_seen,
+      seen_count: peer.seen_count ?? 1
+    }));
   }
 
   const keys = (await kv.smembers(peerIndexKey())) as string[];
   if (!keys || keys.length === 0) return [];
 
   const peers = (await kv.mget(...keys)) as Array<PeerRecord | null>;
+  const staleKeys = keys.filter((_, idx) => !peers[idx]);
+  if (staleKeys.length > 0) {
+    await kv.srem(peerIndexKey(), ...staleKeys);
+  }
   const filtered = peers.filter(Boolean) as PeerRecord[];
-  return filtered;
+  return filtered.map((peer) => ({
+    ...peer,
+    first_seen: peer.first_seen ?? peer.last_seen,
+    seen_count: peer.seen_count ?? 1
+  }));
 }
 
 export async function saveHeaderSnapshot(snapshot: HeaderSnapshot): Promise<void> {

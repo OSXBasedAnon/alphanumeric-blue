@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 type SnapshotResponse = {
   ok: boolean;
   peers: number;
-  source: "indexer" | "snapshot";
+  source: "indexer" | "snapshot" | "pending" | "peer";
   stats?: any;
   snapshot?: {
     height: number;
@@ -19,14 +19,19 @@ export default function MetricsStrip() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/chain-snapshot", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((json) => {
-        if (!cancelled) setData(json);
-      })
-      .catch(() => null);
+    const load = () =>
+      fetch("/api/chain-snapshot", { cache: "no-store" })
+        .then((res) => res.json())
+        .then((json) => {
+          if (!cancelled) setData(json);
+        })
+        .catch(() => null);
+
+    load();
+    const interval = setInterval(load, 10000);
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, []);
 

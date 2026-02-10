@@ -16,14 +16,19 @@ export default function SnapshotHistory() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/snapshot-history", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((json) => {
-        if (!cancelled) setData(json);
-      })
-      .catch(() => null);
+    const load = () =>
+      fetch("/api/snapshot-history", { cache: "no-store" })
+        .then((res) => res.json())
+        .then((json) => {
+          if (!cancelled) setData(json);
+        })
+        .catch(() => null);
+
+    load();
+    const interval = setInterval(load, 15000);
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, []);
 

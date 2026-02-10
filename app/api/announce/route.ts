@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
 
   const payloadIp = typeof payload.ip === "string" ? payload.ip : "";
   const recordIp = payloadIp.trim().length > 0 ? payloadIp : ip;
+  const statsPort = payload.stats_port === undefined ? undefined : Number(payload.stats_port);
   const message = canonicalize({
     ip: payloadIp,
     port: Number(payload.port),
@@ -76,7 +77,8 @@ export async function POST(req: NextRequest) {
     version: String(payload.version),
     height: Number(payload.height),
     last_seen: Number(payload.last_seen),
-    latency_ms: payload.latency_ms === undefined ? undefined : Number(payload.latency_ms)
+    latency_ms: payload.latency_ms === undefined ? undefined : Number(payload.latency_ms),
+    stats_port: payload.stats_port === undefined ? undefined : statsPort
   });
 
   const valid = verifyEd25519(message, String(payload.signature), String(payload.public_key));
@@ -91,6 +93,10 @@ export async function POST(req: NextRequest) {
     return response({ ok: false, error: "invalid_port" }, 400);
   }
 
+  if (statsPort !== undefined && (!Number.isFinite(statsPort) || statsPort <= 0 || statsPort > 65535)) {
+    return response({ ok: false, error: "invalid_stats_port" }, 400);
+  }
+
   const record: PeerRecord = {
     ip: recordIp,
     port,
@@ -98,6 +104,7 @@ export async function POST(req: NextRequest) {
     version: String(payload.version),
     height: Number(payload.height),
     last_seen: Number(payload.last_seen),
+    stats_port: statsPort,
     latency_ms: payload.latency_ms === undefined ? undefined : Number(payload.latency_ms),
     signature: String(payload.signature)
   };

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 type SnapshotResponse = {
   ok: boolean;
-  source: "indexer" | "snapshot";
+  source: "indexer" | "snapshot" | "pending" | "peer";
   peers: number;
   stats?: any;
   snapshot?: {
@@ -33,21 +33,27 @@ export default function StatusPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      fetch("/api/chain-snapshot", { cache: "no-store" }).then((res) => res.json()),
-      fetch("/api/pending-snapshots", { cache: "no-store" }).then((res) => res.json())
-    ])
-      .then(([snapshotJson, pendingJson]) => {
-        if (!cancelled) {
-          setData(snapshotJson);
-          setPending(pendingJson);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setError("unavailable");
-      });
+    const load = () =>
+      Promise.all([
+        fetch("/api/chain-snapshot", { cache: "no-store" }).then((res) => res.json()),
+        fetch("/api/pending-snapshots", { cache: "no-store" }).then((res) => res.json())
+      ])
+        .then(([snapshotJson, pendingJson]) => {
+          if (!cancelled) {
+            setData(snapshotJson);
+            setPending(pendingJson);
+            setError(null);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setError("unavailable");
+        });
+
+    load();
+    const interval = setInterval(load, 10000);
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, []);
 
