@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listStatsSnapshots } from "@/lib/storage";
+import { getLatestStatsSnapshot, listStatsSnapshots } from "@/lib/storage";
 
 function response(body: unknown, status = 200) {
   return NextResponse.json(body, {
@@ -12,6 +12,11 @@ function response(body: unknown, status = 200) {
 }
 
 export async function GET() {
+  const latest = await getLatestStatsSnapshot();
+  if (latest) {
+    return response({ ok: true, count: 1, latest });
+  }
+
   const stats = await listStatsSnapshots();
   stats.sort((a, b) => b.received_at - a.received_at);
   return response({ ok: true, count: stats.length, latest: stats[0] ?? null });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getHeaderSnapshot, listPeers, listPendingSnapshots, listStatsSnapshots } from "@/lib/storage";
+import { getHeaderSnapshot, listPeers, listPendingSnapshots, listStatsSnapshots, getLatestStatsSnapshot } from "@/lib/storage";
 import { scorePeer } from "@/lib/peerScore";
 
 const STATS_API_URL = process.env.STATS_API_URL;
@@ -108,6 +108,9 @@ async function fetchPeerStats(): Promise<any | null> {
 
 async function selectPushedStats(): Promise<any | null> {
   if (!PUSH_STATS_ENABLED) return null;
+  const latest = await getLatestStatsSnapshot();
+  if (latest) return latest;
+
   const stats = await listStatsSnapshots();
   if (stats.length === 0) return null;
 

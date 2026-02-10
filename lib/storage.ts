@@ -56,12 +56,14 @@ const SNAPSHOT_TTL_SECONDS = Number(process.env.SNAPSHOT_TTL_SECONDS ?? 3600);
 const QUORUM_WINDOW_SECONDS = Number(process.env.SNAPSHOT_QUORUM_WINDOW ?? 3600);
 const HISTORY_LIMIT = Number(process.env.SNAPSHOT_HISTORY_LIMIT ?? 48);
 const STATS_TTL_SECONDS = Number(process.env.STATS_TTL_SECONDS ?? 600);
+const STATS_LATEST_TTL_SECONDS = Number(process.env.STATS_LATEST_TTL_SECONDS ?? STATS_TTL_SECONDS * 2);
 
 const memoryPeers = new Map<string, PeerRecord>();
 let memorySnapshot: HeaderSnapshot | null = null;
 const memoryPending = new Map<string, PendingSnapshot>();
 const memoryHistory: HeaderSnapshot[] = [];
 const memoryStats = new Map<string, StatsSnapshot>();
+let memoryLatestStats: StatsSnapshot | null = null;
 
 function kvEnabled(): boolean {
   return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
@@ -97,6 +99,10 @@ function statsKey(nodeId: string): string {
 
 function statsIndexKey(): string {
   return "stats:index";
+}
+
+function statsLatestKey(): string {
+  return "stats:latest";
 }
 
 export async function savePeer(peer: PeerRecord): Promise<void> {
@@ -242,6 +248,7 @@ export async function listSnapshotHistory(): Promise<HeaderSnapshot[]> {
 export async function saveStatsSnapshot(snapshot: StatsSnapshot): Promise<void> {
   if (!kvEnabled()) {
     memoryStats.set(snapshot.node_id, snapshot);
+    memoryLatestStats = snapshot;
     return;
   }
 
@@ -249,6 +256,7 @@ export async function saveStatsSnapshot(snapshot: StatsSnapshot): Promise<void> 
   await kv.set(key, snapshot, { ex: STATS_TTL_SECONDS });
   await kv.sadd(statsIndexKey(), key);
   await kv.expire(statsIndexKey(), STATS_TTL_SECONDS);
+  await kv.set(statsLatestKey(), snapshot, { ex: STATS_LATEST_TTL_SECONDS });
 }
 
 export async function listStatsSnapshots(): Promise<StatsSnapshot[]> {
@@ -265,4 +273,13 @@ export async function listStatsSnapshots(): Promise<StatsSnapshot[]> {
     await kv.srem(statsIndexKey(), ...staleKeys);
   }
   return stats.filter(Boolean) as StatsSnapshot[];
+}
+
+export async function getLatestStatsSnapshot(): Promise<StatsSnapshot | null> {
+  if (!kvEnabled()) {
+    return memoryLatestStats;
+  }
+
+  const latest = (await kv.get(statsLatestKey())) as StatsSnapshot | null;
+  return latest;
 }
