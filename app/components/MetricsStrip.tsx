@@ -16,14 +16,20 @@ type SnapshotResponse = {
 
 export default function MetricsStrip() {
   const [data, setData] = useState<SnapshotResponse | null>(null);
+  const [pending, setPending] = useState<{ pending?: Array<{ snapshot: { height: number } }> } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const load = () =>
-      fetch("/api/chain-snapshot", { cache: "no-store" })
-        .then((res) => res.json())
-        .then((json) => {
-          if (!cancelled) setData(json);
+      Promise.all([
+        fetch("/api/chain-snapshot", { cache: "no-store" }).then((res) => res.json()),
+        fetch("/api/pending-snapshots", { cache: "no-store" }).then((res) => res.json())
+      ])
+        .then(([snapshotJson, pendingJson]) => {
+          if (!cancelled) {
+            setData(snapshotJson);
+            setPending(pendingJson);
+          }
         })
         .catch(() => null);
 
@@ -35,7 +41,7 @@ export default function MetricsStrip() {
     };
   }, []);
 
-  const height = data?.stats?.height ?? data?.snapshot?.height ?? "-";
+  const height = data?.stats?.height ?? data?.snapshot?.height ?? pending?.pending?.[0]?.snapshot.height ?? "-";
   const difficulty = data?.stats?.difficulty ?? "-";
   const hashrate = data?.stats?.hashrate_ths ?? "-";
 

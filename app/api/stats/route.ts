@@ -70,12 +70,15 @@ export async function POST(req: NextRequest) {
     return response({ ok: false, error: "timestamp_skew" }, 400);
   }
 
+  const hashrateValue = typeof payload.hashrate_ths === "string"
+    ? payload.hashrate_ths
+    : Number(payload.hashrate_ths);
   const message = canonicalize({
     node_id: String(payload.node_id),
     public_key: String(payload.public_key),
     height: Number(payload.height),
     difficulty: Number(payload.difficulty),
-    hashrate_ths: Number(payload.hashrate_ths),
+    hashrate_ths: hashrateValue,
     last_block_time: Number(payload.last_block_time),
     peers: Number(payload.peers),
     version: String(payload.version),

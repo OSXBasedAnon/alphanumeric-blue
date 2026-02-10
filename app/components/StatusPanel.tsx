@@ -70,7 +70,7 @@ export default function StatusPanel() {
       <div className="panel-row">
         <span className="label">Height</span>
         <span className="value">
-          {data?.stats?.height ?? data?.snapshot?.height ?? "-"}
+          {data?.stats?.height ?? data?.snapshot?.height ?? pending?.pending?.[0]?.snapshot.height ?? "-"}
         </span>
       </div>
       <div className="panel-row">
