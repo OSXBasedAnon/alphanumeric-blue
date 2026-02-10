@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 type SnapshotResponse = {
   ok: boolean;
   peers: number;
-  source: "indexer" | "snapshot" | "pending" | "peer";
+  source: "indexer" | "snapshot" | "pending" | "peer" | "push";
   stats?: any;
   snapshot?: {
     height: number;

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getHeaderSnapshot, listPeers, listPendingSnapshots } from "@/lib/storage";
+import { getHeaderSnapshot, listPeers, listPendingSnapshots, listStatsSnapshots } from "@/lib/storage";
 import { scorePeer } from "@/lib/peerScore";
 
 const STATS_API_URL = process.env.STATS_API_URL;
@@ -10,6 +10,8 @@ const PEER_STATS_MAX_LAG = Number(process.env.PEER_STATS_MAX_LAG ?? 50);
 const PEER_STATS_MAX_ATTEMPTS = Number(process.env.PEER_STATS_MAX_ATTEMPTS ?? 8);
 const PEER_STATS_MAX_SUCCESSES = Number(process.env.PEER_STATS_MAX_SUCCESSES ?? 4);
 const PEER_STATS_ALLOW_PRIVATE = (process.env.PEER_STATS_ALLOW_PRIVATE ?? "false").toLowerCase() === "true";
+const PUSH_STATS_ENABLED = (process.env.PUSH_STATS_ENABLED ?? "true").toLowerCase() !== "false";
+const PUSH_STATS_MAX_LAG = Number(process.env.PUSH_STATS_MAX_LAG ?? 50);
 
 function isPrivateIp(ip: string): boolean {
   const parts = ip.split(".");
@@ -104,13 +106,32 @@ async function fetchPeerStats(): Promise<any | null> {
   return successes[0] ?? null;
 }
 
+async function selectPushedStats(): Promise<any | null> {
+  if (!PUSH_STATS_ENABLED) return null;
+  const stats = await listStatsSnapshots();
+  if (stats.length === 0) return null;
+
+  const maxHeight = stats.reduce((max, s) => Math.max(max, s.height ?? 0), 0);
+  const minHeight = Math.max(0, maxHeight - PUSH_STATS_MAX_LAG);
+  const filtered = stats.filter((s) => (s.height ?? 0) >= minHeight);
+  if (filtered.length === 0) return null;
+
+  filtered.sort((a, b) => {
+    if (b.height !== a.height) return b.height - a.height;
+    return b.last_block_time - a.last_block_time;
+  });
+
+  return filtered[0] ?? null;
+}
+
 export async function GET() {
   const kvEnabled = Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-  const [snapshot, peers, stats, peerStats] = await Promise.all([
+  const [snapshot, peers, stats, peerStats, pushedStats] = await Promise.all([
     getHeaderSnapshot(),
     listPeers(),
     fetchStats(),
-    fetchPeerStats()
+    fetchPeerStats(),
+    selectPushedStats()
   ]);
 
   if (stats) {
@@ -121,6 +142,18 @@ export async function GET() {
       stats,
       verified: true,
       last_updated: stats.last_block_time ?? Math.floor(Date.now() / 1000),
+      kv_enabled: kvEnabled
+    });
+  }
+
+  if (pushedStats) {
+    return response({
+      ok: true,
+      source: "push",
+      peers: peers.length,
+      stats: pushedStats,
+      verified: false,
+      last_updated: pushedStats.last_block_time ?? Math.floor(Date.now() / 1000),
       kv_enabled: kvEnabled
     });
   }

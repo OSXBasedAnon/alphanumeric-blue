@@ -30,6 +30,20 @@ export type HeaderSnapshot = {
   received_at: number;
 };
 
+export type StatsSnapshot = {
+  node_id: string;
+  public_key: string;
+  height: number;
+  difficulty: number;
+  hashrate_ths: number;
+  last_block_time: number;
+  peers: number;
+  version: string;
+  uptime_secs: number;
+  received_at: number;
+  signature: string;
+};
+
 export type PendingSnapshot = {
   key: string;
   snapshot: HeaderSnapshot;
@@ -41,11 +55,13 @@ const PEER_TTL_SECONDS = Number(process.env.PEER_TTL_SECONDS ?? 1800);
 const SNAPSHOT_TTL_SECONDS = Number(process.env.SNAPSHOT_TTL_SECONDS ?? 3600);
 const QUORUM_WINDOW_SECONDS = Number(process.env.SNAPSHOT_QUORUM_WINDOW ?? 3600);
 const HISTORY_LIMIT = Number(process.env.SNAPSHOT_HISTORY_LIMIT ?? 48);
+const STATS_TTL_SECONDS = Number(process.env.STATS_TTL_SECONDS ?? 600);
 
 const memoryPeers = new Map<string, PeerRecord>();
 let memorySnapshot: HeaderSnapshot | null = null;
 const memoryPending = new Map<string, PendingSnapshot>();
 const memoryHistory: HeaderSnapshot[] = [];
+const memoryStats = new Map<string, StatsSnapshot>();
 
 function kvEnabled(): boolean {
   return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
@@ -73,6 +89,14 @@ function pendingIndexKey(): string {
 
 function historyIndexKey(): string {
   return "chain:history:index";
+}
+
+function statsKey(nodeId: string): string {
+  return `stats:${nodeId}`;
+}
+
+function statsIndexKey(): string {
+  return "stats:index";
 }
 
 export async function savePeer(peer: PeerRecord): Promise<void> {
@@ -213,4 +237,32 @@ export async function listSnapshotHistory(): Promise<HeaderSnapshot[]> {
   const filtered = snapshots.filter(Boolean) as HeaderSnapshot[];
   filtered.sort((a, b) => b.received_at - a.received_at);
   return filtered.slice(0, HISTORY_LIMIT);
+}
+
+export async function saveStatsSnapshot(snapshot: StatsSnapshot): Promise<void> {
+  if (!kvEnabled()) {
+    memoryStats.set(snapshot.node_id, snapshot);
+    return;
+  }
+
+  const key = statsKey(snapshot.node_id);
+  await kv.set(key, snapshot, { ex: STATS_TTL_SECONDS });
+  await kv.sadd(statsIndexKey(), key);
+  await kv.expire(statsIndexKey(), STATS_TTL_SECONDS);
+}
+
+export async function listStatsSnapshots(): Promise<StatsSnapshot[]> {
+  if (!kvEnabled()) {
+    return Array.from(memoryStats.values());
+  }
+
+  const keys = (await kv.smembers(statsIndexKey())) as string[];
+  if (!keys || keys.length === 0) return [];
+
+  const stats = (await kv.mget(...keys)) as Array<StatsSnapshot | null>;
+  const staleKeys = keys.filter((_, idx) => !stats[idx]);
+  if (staleKeys.length > 0) {
+    await kv.srem(statsIndexKey(), ...staleKeys);
+  }
+  return stats.filter(Boolean) as StatsSnapshot[];
 }

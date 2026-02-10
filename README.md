@@ -6,6 +6,7 @@ Serverless discovery + light snapshot gateway for the Alphanumeric network.
 - `POST /api/announce`: nodes announce themselves with signed payloads
 - `GET /api/peers`: clients fetch ranked peer list
 - `POST /api/headers`: nodes publish signed header snapshots
+- `POST /api/stats`: nodes push signed stats snapshots (NAT-friendly)
 - `GET /api/chain-snapshot`: site shows last-known network state
 - `GET /api/pending-snapshots`: inspect unverified snapshots
 - `GET /api/health`: uptime check
@@ -22,9 +23,15 @@ Serverless discovery + light snapshot gateway for the Alphanumeric network.
 - `ANNOUNCE_SUBNET_RL_WINDOW` (default `60`)
 - `HEADERS_RL_LIMIT` (default `10`)
 - `HEADERS_RL_WINDOW` (default `60`)
+- `STATS_RL_LIMIT` (default `10`)
+- `STATS_RL_WINDOW` (default `60`)
+- `STATS_TTL_SECONDS` (default `600`)
 - `STATS_API_URL` (optional) indexer stats URL
+- `PUSH_STATS_ENABLED` (default `true`)
+- `PUSH_STATS_MAX_LAG` (default `50`)
 - `TRUSTED_HEADER_KEYS` (optional) comma-separated Ed25519 public keys
 - `TRUSTED_ANNOUNCE_KEYS` (optional) comma-separated Ed25519 public keys
+- `TRUSTED_STATS_KEYS` (optional) comma-separated Ed25519 public keys
 - `EXPECTED_NETWORK_ID` (optional) hex genesis hash or network id
 - `SNAPSHOT_QUORUM` (default `2`)
 - `SNAPSHOT_QUORUM_WINDOW` (default `3600`)
@@ -56,6 +63,21 @@ Sort keys lexicographically and exclude the `signature` field.
   "headers": [{ "height": 12345, "hash": "...", "prev_hash": "...", "timestamp": 1700000000 }],
   "node_id": "node-abc",
   "public_key": "<ed25519 pubkey>"
+}
+```
+
+### Stats message canonical payload
+```
+{
+  "node_id": "node-abc",
+  "public_key": "<ed25519 pubkey>",
+  "height": 12345,
+  "difficulty": 123,
+  "hashrate_ths": 0.5,
+  "last_block_time": 1700000000,
+  "peers": 5,
+  "version": "beta-7.2.7",
+  "uptime_secs": 3600
 }
 ```
 
