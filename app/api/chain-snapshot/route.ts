@@ -9,6 +9,21 @@ const PEER_STATS_PORT_DEFAULT = Number(process.env.PEER_STATS_PORT_DEFAULT ?? 87
 const PEER_STATS_MAX_LAG = Number(process.env.PEER_STATS_MAX_LAG ?? 50);
 const PEER_STATS_MAX_ATTEMPTS = Number(process.env.PEER_STATS_MAX_ATTEMPTS ?? 8);
 const PEER_STATS_MAX_SUCCESSES = Number(process.env.PEER_STATS_MAX_SUCCESSES ?? 4);
+const PEER_STATS_ALLOW_PRIVATE = (process.env.PEER_STATS_ALLOW_PRIVATE ?? "false").toLowerCase() === "true";
+
+function isPrivateIp(ip: string): boolean {
+  const parts = ip.split(".");
+  if (parts.length !== 4) return false;
+  const nums = parts.map((p) => Number(p));
+  if (nums.some((n) => Number.isNaN(n))) return false;
+  const [a, b] = nums;
+  if (a === 10) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  return false;
+}
 const STALE_SECONDS = Number(process.env.SNAPSHOT_STALE_SECONDS ?? 900);
 
 function response(body: unknown, status = 200) {
@@ -46,6 +61,7 @@ async function fetchPeerStats(): Promise<any | null> {
 
   const sorted = peers
     .filter((p) => p.ip && p.ip !== "0.0.0.0")
+    .filter((p) => PEER_STATS_ALLOW_PRIVATE || !isPrivateIp(p.ip))
     .filter((p) => (p.height ?? 0) >= minHeight)
     .sort((a, b) => scorePeer(b, nowSec) - scorePeer(a, nowSec))
     .slice(0, Math.max(6, PEER_STATS_MAX_ATTEMPTS));
