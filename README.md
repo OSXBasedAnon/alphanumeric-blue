@@ -93,3 +93,4 @@ npm run dev
 ## Notes
 - Without `KV_REST_API_URL` and `KV_REST_API_TOKEN`, the service uses in-memory storage.
 - This is a discovery and light snapshot layer, not a consensus source of truth.
+- Bootstrap snapshot is served at `public/bootstrap/blockchain.db.zip` for cold starts.
