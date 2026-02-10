@@ -36,6 +36,9 @@ Serverless discovery + light snapshot gateway for the Alphanumeric network.
 - `SNAPSHOT_QUORUM` (default `2`)
 - `SNAPSHOT_QUORUM_WINDOW` (default `3600`)
 - `SNAPSHOT_QUORUM_FALLBACK` (default `true`) allow quorum to drop to trusted key count when only 1 trusted key exists
+- `BOOTSTRAP_QUORUM_THRESHOLD` (default `2`) enable bootstrap mode below this peer count
+- `BOOTSTRAP_QUORUM` (default `1`) quorum to use in bootstrap mode
+- `BOOTSTRAP_PENDING_WINDOW` (default `900`) pending snapshot TTL in bootstrap mode
 
 ## Canonical signing
 The server verifies signatures against a canonical JSON string.

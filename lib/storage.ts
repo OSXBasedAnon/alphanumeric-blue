@@ -57,6 +57,7 @@ const QUORUM_WINDOW_SECONDS = Number(process.env.SNAPSHOT_QUORUM_WINDOW ?? 3600)
 const HISTORY_LIMIT = Number(process.env.SNAPSHOT_HISTORY_LIMIT ?? 48);
 const STATS_TTL_SECONDS = Number(process.env.STATS_TTL_SECONDS ?? 600);
 const STATS_LATEST_TTL_SECONDS = Number(process.env.STATS_LATEST_TTL_SECONDS ?? STATS_TTL_SECONDS * 2);
+const PENDING_TTL_SECONDS = Number(process.env.PENDING_TTL_SECONDS ?? QUORUM_WINDOW_SECONDS);
 
 const memoryPeers = new Map<string, PeerRecord>();
 let memorySnapshot: HeaderSnapshot | null = null;
@@ -184,7 +185,8 @@ export async function getHeaderSnapshot(): Promise<HeaderSnapshot | null> {
 export async function upsertPendingSnapshot(
   key: string,
   snapshot: HeaderSnapshot,
-  signer: string
+  signer: string,
+  ttlSeconds = QUORUM_WINDOW_SECONDS
 ): Promise<PendingSnapshot> {
   const now = Math.floor(Date.now() / 1000);
 
@@ -213,14 +215,20 @@ export async function upsertPendingSnapshot(
     signers: Array.from(signers),
     received_at: now
   };
-  await kv.set(pendingKey, pending, { ex: QUORUM_WINDOW_SECONDS });
+  await kv.set(pendingKey, pending, { ex: ttlSeconds });
   await kv.sadd(pendingIndexKey(), pendingKey);
-  await kv.expire(pendingIndexKey(), QUORUM_WINDOW_SECONDS);
+  await kv.expire(pendingIndexKey(), ttlSeconds);
   return pending;
 }
 
 export async function listPendingSnapshots(): Promise<PendingSnapshot[]> {
   if (!kvEnabled()) {
+    const now = Math.floor(Date.now() / 1000);
+    for (const [key, pending] of memoryPending.entries()) {
+      if (now - pending.received_at > PENDING_TTL_SECONDS) {
+        memoryPending.delete(key);
+      }
+    }
     return Array.from(memoryPending.values());
   }
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { canonicalize } from "@/lib/canonical";
 import { verifyEd25519 } from "@/lib/crypto";
 import { rateLimit } from "@/lib/rateLimit";
-import { getHeaderSnapshot, saveHeaderSnapshot, upsertPendingSnapshot, type HeaderSnapshot } from "@/lib/storage";
+import { getHeaderSnapshot, listPeers, saveHeaderSnapshot, upsertPendingSnapshot, type HeaderSnapshot } from "@/lib/storage";
 
 const MAX_SKEW_SECONDS = Number(process.env.MAX_SKEW_SECONDS ?? 600);
 const RATE_LIMIT = Number(process.env.HEADERS_RL_LIMIT ?? 10);
@@ -16,6 +16,9 @@ const TRUSTED_KEYS = new Set(
 const REQUIRED_QUORUM = Number(process.env.SNAPSHOT_QUORUM ?? 2);
 const EXPECTED_NETWORK_ID = process.env.EXPECTED_NETWORK_ID ?? "";
 const QUORUM_FALLBACK = (process.env.SNAPSHOT_QUORUM_FALLBACK ?? "true").toLowerCase() !== "false";
+const BOOTSTRAP_QUORUM_THRESHOLD = Number(process.env.BOOTSTRAP_QUORUM_THRESHOLD ?? 2);
+const BOOTSTRAP_QUORUM = Number(process.env.BOOTSTRAP_QUORUM ?? 1);
+const BOOTSTRAP_PENDING_WINDOW = Number(process.env.BOOTSTRAP_PENDING_WINDOW ?? 900);
 
 function response(body: unknown, status = 200) {
   return NextResponse.json(body, {
@@ -107,14 +110,23 @@ export async function POST(req: NextRequest) {
   };
 
   const headerKey = `${snapshot.network_id ?? "unknown"}:${snapshot.height}:${snapshot.headers.at(-1)?.hash ?? "none"}`;
-  const pending = await upsertPendingSnapshot(headerKey, snapshot, String(payload.public_key));
+  const peers = await listPeers();
+  const bootstrapMode = peers.length < BOOTSTRAP_QUORUM_THRESHOLD;
+  const pendingTtl = bootstrapMode ? BOOTSTRAP_PENDING_WINDOW : undefined;
+  const pending = await upsertPendingSnapshot(
+    headerKey,
+    snapshot,
+    String(payload.public_key),
+    pendingTtl
+  );
   const trustedSigners = TRUSTED_KEYS.size === 0
     ? pending.signers
     : pending.signers.filter((k) => TRUSTED_KEYS.has(k));
-  const effectiveQuorum =
+  const baseQuorum =
     QUORUM_FALLBACK && TRUSTED_KEYS.size > 0 && TRUSTED_KEYS.size < REQUIRED_QUORUM
       ? TRUSTED_KEYS.size
       : REQUIRED_QUORUM;
+  const effectiveQuorum = bootstrapMode ? Math.min(BOOTSTRAP_QUORUM, baseQuorum) : baseQuorum;
   const quorumReached = trustedSigners.length >= effectiveQuorum;
 
   if (quorumReached) {
@@ -125,7 +137,8 @@ export async function POST(req: NextRequest) {
     ok: true,
     quorum: trustedSigners.length,
     required_quorum: effectiveQuorum,
-    verified: quorumReached
+    verified: quorumReached,
+    bootstrap: bootstrapMode
   });
 }
 
