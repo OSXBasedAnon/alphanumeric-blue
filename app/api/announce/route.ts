@@ -66,8 +66,9 @@ export async function POST(req: NextRequest) {
     return response({ ok: false, error: "timestamp_skew" }, 400);
   }
 
+  const ipValue = typeof payload.ip === "string" && payload.ip.trim().length > 0 ? payload.ip : ip;
   const message = canonicalize({
-    ip: payload.ip ?? ip,
+    ip: ipValue,
     port: Number(payload.port),
     node_id: String(payload.node_id),
     public_key: String(payload.public_key),
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
   }
 
   const record: PeerRecord = {
-    ip: payload.ip ?? ip,
+    ip: ipValue,
     port,
     node_id: String(payload.node_id),
     version: String(payload.version),
