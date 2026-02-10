@@ -28,6 +28,24 @@ export default function Page() {
           </div>
         </div>
         <div className="hero-right">
+          <div className="top-links">
+            <a
+              className="top-link"
+              href="https://github.com/OSXBasedAnon/alphanumeric/releases/download/v7.3.3/alphanumeric-beta-v7.3.3-windows.zip"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Download
+            </a>
+            <a
+              className="top-link"
+              href="https://blog.invariantdata.com/p/alphanumeric.html"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Whitepaper
+            </a>
+          </div>
           <StatusPanel />
         </div>
       </section>
