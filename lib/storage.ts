@@ -37,10 +37,12 @@ export type PendingSnapshot = {
 const PEER_TTL_SECONDS = Number(process.env.PEER_TTL_SECONDS ?? 1800);
 const SNAPSHOT_TTL_SECONDS = Number(process.env.SNAPSHOT_TTL_SECONDS ?? 3600);
 const QUORUM_WINDOW_SECONDS = Number(process.env.SNAPSHOT_QUORUM_WINDOW ?? 3600);
+const HISTORY_LIMIT = Number(process.env.SNAPSHOT_HISTORY_LIMIT ?? 48);
 
 const memoryPeers = new Map<string, PeerRecord>();
 let memorySnapshot: HeaderSnapshot | null = null;
 const memoryPending = new Map<string, PendingSnapshot>();
+const memoryHistory: HeaderSnapshot[] = [];
 
 function kvEnabled(): boolean {
   return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
@@ -64,6 +66,10 @@ function pendingPrefix(): string {
 
 function pendingIndexKey(): string {
   return "chain:pending:index";
+}
+
+function historyIndexKey(): string {
+  return "chain:history:index";
 }
 
 export async function savePeer(peer: PeerRecord): Promise<void> {
@@ -98,10 +104,18 @@ export async function listPeers(): Promise<PeerRecord[]> {
 export async function saveHeaderSnapshot(snapshot: HeaderSnapshot): Promise<void> {
   if (!kvEnabled()) {
     memorySnapshot = snapshot;
+    memoryHistory.unshift(snapshot);
+    if (memoryHistory.length > HISTORY_LIMIT) {
+      memoryHistory.length = HISTORY_LIMIT;
+    }
     return;
   }
 
   await kv.set(snapshotKey(), snapshot, { ex: SNAPSHOT_TTL_SECONDS });
+  const historyKey = `chain:history:${snapshot.received_at}:${snapshot.height}`;
+  await kv.set(historyKey, snapshot, { ex: SNAPSHOT_TTL_SECONDS });
+  await kv.sadd(historyIndexKey(), historyKey);
+  await kv.expire(historyIndexKey(), SNAPSHOT_TTL_SECONDS);
 }
 
 export async function getHeaderSnapshot(): Promise<HeaderSnapshot | null> {
@@ -161,4 +175,18 @@ export async function listPendingSnapshots(): Promise<PendingSnapshot[]> {
 
   const pending = (await kv.mget(...keys)) as Array<PendingSnapshot | null>;
   return pending.filter(Boolean) as PendingSnapshot[];
+}
+
+export async function listSnapshotHistory(): Promise<HeaderSnapshot[]> {
+  if (!kvEnabled()) {
+    return memoryHistory.slice(0, HISTORY_LIMIT);
+  }
+
+  const keys = (await kv.smembers(historyIndexKey())) as string[];
+  if (!keys || keys.length === 0) return [];
+
+  const snapshots = (await kv.mget(...keys)) as Array<HeaderSnapshot | null>;
+  const filtered = snapshots.filter(Boolean) as HeaderSnapshot[];
+  filtered.sort((a, b) => b.received_at - a.received_at);
+  return filtered.slice(0, HISTORY_LIMIT);
 }
