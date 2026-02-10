@@ -29,6 +29,7 @@ async function fetchStats(): Promise<any | null> {
 }
 
 export async function GET() {
+  const kvEnabled = Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
   const [snapshot, peers, stats] = await Promise.all([
     getHeaderSnapshot(),
     listPeers(),
@@ -42,7 +43,8 @@ export async function GET() {
       peers: peers.length,
       stats,
       verified: true,
-      last_updated: stats.last_block_time ?? Math.floor(Date.now() / 1000)
+      last_updated: stats.last_block_time ?? Math.floor(Date.now() / 1000),
+      kv_enabled: kvEnabled
     });
   }
 
@@ -56,6 +58,7 @@ export async function GET() {
     snapshot,
     stale,
     verified: Boolean(snapshot),
-    last_updated: lastUpdated
+    last_updated: lastUpdated,
+    kv_enabled: kvEnabled
   });
 }
