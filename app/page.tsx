@@ -31,7 +31,7 @@ export default function Page() {
           <div className="top-links">
             <a
               className="top-link"
-              href="https://github.com/OSXBasedAnon/alphanumeric/releases/download/v7.3.3/alphanumeric-beta-v7.3.3-windows.zip"
+              href="https://github.com/OSXBasedAnon/alphanumeric"
               target="_blank"
               rel="noreferrer"
             >

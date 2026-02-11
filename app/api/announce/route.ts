@@ -67,10 +67,11 @@ export async function POST(req: NextRequest) {
   }
 
   const payloadIp = typeof payload.ip === "string" ? payload.ip : "";
-  const recordIp = payloadIp.trim().length > 0 ? payloadIp : ip;
+  const canOverrideIp = TRUSTED_ANNOUNCE_KEYS.size > 0 && TRUSTED_ANNOUNCE_KEYS.has(String(payload.public_key));
+  const recordIp = canOverrideIp && payloadIp.trim().length > 0 ? payloadIp : ip;
   const statsPort = payload.stats_port === undefined ? undefined : Number(payload.stats_port);
   const message = canonicalize({
-    ip: payloadIp,
+    ip: canOverrideIp ? payloadIp : "",
     port: Number(payload.port),
     node_id: String(payload.node_id),
     public_key: String(payload.public_key),
