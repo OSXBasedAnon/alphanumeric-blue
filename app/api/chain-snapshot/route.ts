@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
-import { getHeaderSnapshot, listPeers, listPendingSnapshots, listStatsSnapshots, getLatestStatsSnapshot } from "@/lib/storage";
+import {
+  getHeaderSnapshot,
+  listPeers,
+  listPendingSnapshots,
+  listStatsSnapshots,
+  getLatestStatsSnapshot,
+  type PeerRecord
+} from "@/lib/storage";
 import { scorePeer } from "@/lib/peerScore";
 
 const STATS_API_URL = process.env.STATS_API_URL;
@@ -12,6 +19,7 @@ const PEER_STATS_MAX_SUCCESSES = Number(process.env.PEER_STATS_MAX_SUCCESSES ?? 
 const PEER_STATS_ALLOW_PRIVATE = (process.env.PEER_STATS_ALLOW_PRIVATE ?? "false").toLowerCase() === "true";
 const PUSH_STATS_ENABLED = (process.env.PUSH_STATS_ENABLED ?? "true").toLowerCase() !== "false";
 const PUSH_STATS_MAX_LAG = Number(process.env.PUSH_STATS_MAX_LAG ?? 50);
+const CHAIN_SNAPSHOT_CACHE_MS = Number(process.env.CHAIN_SNAPSHOT_CACHE_MS ?? 2000);
 
 function isPrivateIp(ip: string): boolean {
   const parts = ip.split(".");
@@ -26,6 +34,31 @@ function isPrivateIp(ip: string): boolean {
   if (a === 169 && b === 254) return true;
   return false;
 }
+
+function isValidIpv4(ip: string): boolean {
+  const parts = ip.split(".");
+  if (parts.length !== 4) return false;
+  for (const part of parts) {
+    if (!/^\d+$/.test(part)) return false;
+    const value = Number(part);
+    if (!Number.isInteger(value) || value < 0 || value > 255) return false;
+  }
+  return true;
+}
+
+function isForbiddenPublicProbeTarget(ip: string): boolean {
+  if (!isValidIpv4(ip)) return true;
+  const [a, b] = ip.split(".").map((p) => Number(p));
+  // RFC 6890 special-use ranges (non-routable or sensitive).
+  if (a === 0) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+  if (a === 192 && b === 0) return true; // 192.0.0.0/24
+  if (a === 192 && b === 88) return true; // 192.88.99.0/24 6to4 relay anycast
+  if (a === 198 && (b === 18 || b === 19)) return true; // benchmark nets
+  if (a >= 224) return true; // multicast and reserved
+  return false;
+}
+
 const STALE_SECONDS = Number(process.env.SNAPSHOT_STALE_SECONDS ?? 900);
 
 function response(body: unknown, status = 200) {
@@ -52,9 +85,8 @@ async function fetchStats(): Promise<any | null> {
   }
 }
 
-async function fetchPeerStats(): Promise<any | null> {
+async function fetchPeerStats(peers: PeerRecord[]): Promise<any | null> {
   if (!PEER_STATS_ENABLED) return null;
-  const peers = await listPeers();
   if (peers.length === 0) return null;
 
   const nowSec = Math.floor(Date.now() / 1000);
@@ -63,34 +95,38 @@ async function fetchPeerStats(): Promise<any | null> {
 
   const sorted = peers
     .filter((p) => p.ip && p.ip !== "0.0.0.0")
+    .filter((p) => !isForbiddenPublicProbeTarget(p.ip))
     .filter((p) => PEER_STATS_ALLOW_PRIVATE || !isPrivateIp(p.ip))
     .filter((p) => (p.height ?? 0) >= minHeight)
     .sort((a, b) => scorePeer(b, nowSec) - scorePeer(a, nowSec))
     .slice(0, Math.max(6, PEER_STATS_MAX_ATTEMPTS));
 
-  const successes: any[] = [];
-  let attempts = 0;
-  for (const peer of sorted) {
-    if (attempts >= PEER_STATS_MAX_ATTEMPTS) break;
-    if (successes.length >= PEER_STATS_MAX_SUCCESSES) break;
-    const port = peer.stats_port ?? PEER_STATS_PORT_DEFAULT;
-    if (!Number.isFinite(port) || port <= 0 || port > 65535) continue;
-    try {
-      attempts += 1;
+  const selected = sorted.slice(0, PEER_STATS_MAX_ATTEMPTS);
+  const probeResults = await Promise.allSettled(
+    selected.map(async (peer) => {
+      const port = peer.stats_port ?? PEER_STATS_PORT_DEFAULT;
+      if (!Number.isFinite(port) || port <= 0 || port > 65535) return null;
+
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), PEER_STATS_TIMEOUT_MS);
-      const res = await fetch(`http://${peer.ip}:${port}/stats`, {
-        signal: controller.signal,
-        cache: "no-store"
-      });
-      clearTimeout(timeout);
-      if (!res.ok) continue;
-      const json = await res.json();
-      successes.push(json);
-    } catch {
-      continue;
-    }
-  }
+      try {
+        const res = await fetch(`http://${peer.ip}:${port}/stats`, {
+          signal: controller.signal,
+          cache: "no-store"
+        });
+        if (!res.ok) return null;
+        return await res.json();
+      } finally {
+        clearTimeout(timeout);
+      }
+    })
+  );
+
+  const successes = probeResults
+    .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled")
+    .map((r) => r.value)
+    .filter(Boolean)
+    .slice(0, PEER_STATS_MAX_SUCCESSES);
 
   if (successes.length === 0) return null;
 
@@ -127,80 +163,112 @@ async function selectPushedStats(): Promise<any | null> {
   return filtered[0] ?? null;
 }
 
+type CachedResult = {
+  expiresAt: number;
+  payload: unknown;
+};
+
+let cachedResult: CachedResult | null = null;
+let inflight: Promise<NextResponse> | null = null;
+
 export async function GET() {
-  const kvEnabled = Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-  const [snapshot, peers, stats, peerStats, pushedStats] = await Promise.all([
-    getHeaderSnapshot(),
-    listPeers(),
-    fetchStats(),
-    fetchPeerStats(),
-    selectPushedStats()
-  ]);
-
-  if (stats) {
-    return response({
-      ok: true,
-      source: "indexer",
-      peers: peers.length,
-      stats,
-      verified: true,
-      last_updated: stats.last_block_time ?? Math.floor(Date.now() / 1000),
-      kv_enabled: kvEnabled
-    });
+  const nowMs = Date.now();
+  if (cachedResult && nowMs < cachedResult.expiresAt) {
+    return response(cachedResult.payload);
+  }
+  if (inflight) {
+    return inflight;
   }
 
-  if (pushedStats) {
-    return response({
-      ok: true,
-      source: "push",
-      peers: peers.length,
-      stats: pushedStats,
-      verified: false,
-      last_updated: pushedStats.last_block_time ?? Math.floor(Date.now() / 1000),
-      kv_enabled: kvEnabled
-    });
-  }
+  inflight = (async () => {
+    const kvEnabled = Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+    const [snapshot, peers, stats, pushedStats] = await Promise.all([
+      getHeaderSnapshot(),
+      listPeers(),
+      fetchStats(),
+      selectPushedStats()
+    ]);
+    const peerStats = await fetchPeerStats(peers);
 
-  if (peerStats) {
-    return response({
-      ok: true,
-      source: "peer",
-      peers: peers.length,
-      stats: peerStats,
-      verified: false,
-      last_updated: peerStats.last_block_time ?? Math.floor(Date.now() / 1000),
-      kv_enabled: kvEnabled
-    });
-  }
-
-  let selected = snapshot;
-  let source: "snapshot" | "pending" = "snapshot";
-
-  if (!selected) {
-    const pending = await listPendingSnapshots();
-    if (pending.length > 0) {
-      pending.sort((a, b) => {
-        if (b.snapshot.height !== a.snapshot.height) {
-          return b.snapshot.height - a.snapshot.height;
-        }
-        return b.received_at - a.received_at;
-      });
-      selected = pending[0].snapshot;
-      source = "pending";
+    if (stats) {
+      const payload = {
+        ok: true,
+        source: "indexer",
+        peers: peers.length,
+        stats,
+        verified: true,
+        last_updated: stats.last_block_time ?? Math.floor(Date.now() / 1000),
+        kv_enabled: kvEnabled
+      };
+      cachedResult = { expiresAt: Date.now() + CHAIN_SNAPSHOT_CACHE_MS, payload };
+      return response(payload);
     }
+
+    if (pushedStats) {
+      const payload = {
+        ok: true,
+        source: "push",
+        peers: peers.length,
+        stats: pushedStats,
+        verified: false,
+        last_updated: pushedStats.last_block_time ?? Math.floor(Date.now() / 1000),
+        kv_enabled: kvEnabled
+      };
+      cachedResult = { expiresAt: Date.now() + CHAIN_SNAPSHOT_CACHE_MS, payload };
+      return response(payload);
+    }
+
+    if (peerStats) {
+      const payload = {
+        ok: true,
+        source: "peer",
+        peers: peers.length,
+        stats: peerStats,
+        verified: false,
+        last_updated: peerStats.last_block_time ?? Math.floor(Date.now() / 1000),
+        kv_enabled: kvEnabled
+      };
+      cachedResult = { expiresAt: Date.now() + CHAIN_SNAPSHOT_CACHE_MS, payload };
+      return response(payload);
+    }
+
+    let selected = snapshot;
+    let source: "snapshot" | "pending" = "snapshot";
+
+    if (!selected) {
+      const pending = await listPendingSnapshots();
+      if (pending.length > 0) {
+        pending.sort((a, b) => {
+          if (b.snapshot.height !== a.snapshot.height) {
+            return b.snapshot.height - a.snapshot.height;
+          }
+          return b.received_at - a.received_at;
+        });
+        selected = pending[0].snapshot;
+        source = "pending";
+      }
+    }
+
+    const lastUpdated = selected?.received_at ?? 0;
+    const stale = lastUpdated > 0 ? Math.floor(Date.now() / 1000) - lastUpdated > STALE_SECONDS : true;
+
+    const payload = {
+      ok: true,
+      source,
+      peers: peers.length,
+      snapshot: selected,
+      stale,
+      verified: Boolean(snapshot),
+      last_updated: lastUpdated,
+      kv_enabled: kvEnabled
+    };
+    cachedResult = { expiresAt: Date.now() + CHAIN_SNAPSHOT_CACHE_MS, payload };
+    return response(payload);
+  })();
+
+  try {
+    return await inflight;
+  } finally {
+    inflight = null;
   }
-
-  const lastUpdated = selected?.received_at ?? 0;
-  const stale = lastUpdated > 0 ? Math.floor(Date.now() / 1000) - lastUpdated > STALE_SECONDS : true;
-
-  return response({
-    ok: true,
-    source,
-    peers: peers.length,
-    snapshot: selected,
-    stale,
-    verified: Boolean(snapshot),
-    last_updated: lastUpdated,
-    kv_enabled: kvEnabled
-  });
 }

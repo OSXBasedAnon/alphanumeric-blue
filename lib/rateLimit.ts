@@ -7,7 +7,16 @@ function kvEnabled(): boolean {
 }
 
 export async function rateLimit(ip: string, limit: number, windowSeconds: number): Promise<boolean> {
-  const key = `rl:${ip}`;
+  return rateLimitScoped("global", ip, limit, windowSeconds);
+}
+
+export async function rateLimitScoped(
+  scope: string,
+  ip: string,
+  limit: number,
+  windowSeconds: number
+): Promise<boolean> {
+  const key = `rl:${scope}:${ip}`;
   const now = Math.floor(Date.now() / 1000);
 
   if (!kvEnabled()) {

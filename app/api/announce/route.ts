@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { canonicalize } from "@/lib/canonical";
 import { verifyEd25519 } from "@/lib/crypto";
-import { rateLimit } from "@/lib/rateLimit";
+import { rateLimitScoped } from "@/lib/rateLimit";
+import { getClientIp } from "@/lib/request";
 import { savePeer, type PeerRecord } from "@/lib/storage";
 
 const MAX_SKEW_SECONDS = Number(process.env.MAX_SKEW_SECONDS ?? 600);
@@ -38,12 +39,12 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "0.0.0.0";
-  const allowed = await rateLimit(ip, RATE_LIMIT, RATE_WINDOW);
+  const ip = getClientIp(req);
+  const allowed = await rateLimitScoped("announce_ip", ip, RATE_LIMIT, RATE_WINDOW);
   if (!allowed) return response({ ok: false, error: "rate_limited" }, 429);
   const subnet = subnetKey(ip);
   if (subnet) {
-    const subnetAllowed = await rateLimit(subnet, SUBNET_LIMIT, SUBNET_WINDOW);
+    const subnetAllowed = await rateLimitScoped("announce_subnet", subnet, SUBNET_LIMIT, SUBNET_WINDOW);
     if (!subnetAllowed) return response({ ok: false, error: "subnet_rate_limited" }, 429);
   }
 
@@ -66,12 +67,14 @@ export async function POST(req: NextRequest) {
     return response({ ok: false, error: "timestamp_skew" }, 400);
   }
 
-  const payloadIp = typeof payload.ip === "string" ? payload.ip : "";
+  const payloadIp = typeof payload.ip === "string" ? payload.ip.trim() : "";
   const canOverrideIp = TRUSTED_ANNOUNCE_KEYS.size > 0 && TRUSTED_ANNOUNCE_KEYS.has(String(payload.public_key));
   const recordIp = canOverrideIp && payloadIp.trim().length > 0 ? payloadIp : ip;
   const statsPort = payload.stats_port === undefined ? undefined : Number(payload.stats_port);
+  const messageIp = payloadIp.length > 0 ? payloadIp : "";
   const message = canonicalize({
-    ip: canOverrideIp ? payloadIp : "",
+    // Keep signature verification aligned with node canonical payload.
+    ip: messageIp,
     port: Number(payload.port),
     node_id: String(payload.node_id),
     public_key: String(payload.public_key),

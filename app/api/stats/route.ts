@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { canonicalize } from "@/lib/canonical";
 import { verifyEd25519 } from "@/lib/crypto";
-import { rateLimit } from "@/lib/rateLimit";
+import { rateLimitScoped } from "@/lib/rateLimit";
+import { getClientIp } from "@/lib/request";
 import { saveStatsSnapshot, type StatsSnapshot } from "@/lib/storage";
 
 const MAX_SKEW_SECONDS = Number(process.env.MAX_SKEW_SECONDS ?? 600);
@@ -36,8 +37,8 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "0.0.0.0";
-  const allowed = await rateLimit(ip, RATE_LIMIT, RATE_WINDOW);
+  const ip = getClientIp(req);
+  const allowed = await rateLimitScoped("stats_ip", ip, RATE_LIMIT, RATE_WINDOW);
   if (!allowed) return response({ ok: false, error: "rate_limited" }, 429);
 
   let payload: any;
