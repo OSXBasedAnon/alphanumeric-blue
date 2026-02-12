@@ -75,10 +75,19 @@ export async function POST(req: NextRequest) {
     return response({ ok: false, error: "timestamp_skew" }, 400);
   }
 
+  if (payload.difficulty !== undefined && !Number.isFinite(Number(payload.difficulty))) {
+    return response({ ok: false, error: "invalid_difficulty" }, 400);
+  }
+  if (payload.hashrate_ths !== undefined && !Number.isFinite(Number(payload.hashrate_ths))) {
+    return response({ ok: false, error: "invalid_hashrate" }, 400);
+  }
+
   const message = canonicalize({
     height: Number(payload.height),
     network_id: payload.network_id ? String(payload.network_id) : undefined,
     last_block_time: Number(payload.last_block_time),
+    difficulty: payload.difficulty === undefined ? undefined : Number(payload.difficulty),
+    hashrate_ths: payload.hashrate_ths === undefined ? undefined : Number(payload.hashrate_ths),
     headers: payload.headers,
     node_id: String(payload.node_id),
     public_key: String(payload.public_key)
@@ -103,6 +112,8 @@ export async function POST(req: NextRequest) {
     height: Number(payload.height),
     network_id: payload.network_id ? String(payload.network_id) : undefined,
     last_block_time: Number(payload.last_block_time),
+    difficulty: payload.difficulty === undefined ? undefined : Number(payload.difficulty),
+    hashrate_ths: payload.hashrate_ths === undefined ? undefined : Number(payload.hashrate_ths),
     headers: payload.headers,
     node_id: String(payload.node_id),
     public_key: String(payload.public_key),

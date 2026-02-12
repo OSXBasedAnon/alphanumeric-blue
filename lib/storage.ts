@@ -18,6 +18,8 @@ export type HeaderSnapshot = {
   height: number;
   network_id?: string;
   last_block_time: number;
+  difficulty?: number;
+  hashrate_ths?: number;
   headers: Array<{
     height: number;
     hash: string;

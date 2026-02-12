@@ -5,6 +5,7 @@ import {
   listPendingSnapshots,
   listStatsSnapshots,
   getLatestStatsSnapshot,
+  type HeaderSnapshot,
   type PeerRecord
 } from "@/lib/storage";
 import { scorePeer } from "@/lib/peerScore";
@@ -69,6 +70,35 @@ function response(body: unknown, status = 200) {
       "cache-control": "no-store"
     }
   });
+}
+
+function snapshotToStats(snapshot: HeaderSnapshot): {
+  height: number;
+  difficulty: number;
+  hashrate_ths: number;
+  last_block_time: number;
+} {
+  return {
+    height: snapshot.height,
+    difficulty: Number.isFinite(snapshot.difficulty ?? NaN) ? Number(snapshot.difficulty) : 0,
+    hashrate_ths: Number.isFinite(snapshot.hashrate_ths ?? NaN) ? Number(snapshot.hashrate_ths) : 0,
+    last_block_time: snapshot.last_block_time
+  };
+}
+
+function resolvePeerCount(primary: number, ...candidates: Array<unknown>): number {
+  let best = Number.isFinite(primary) ? Math.max(0, Number(primary)) : 0;
+  for (const candidate of candidates) {
+    const value = Number(
+      candidate && typeof candidate === "object" && "peers" in (candidate as Record<string, unknown>)
+        ? (candidate as Record<string, unknown>).peers
+        : NaN
+    );
+    if (Number.isFinite(value)) {
+      best = Math.max(best, value);
+    }
+  }
+  return best;
 }
 
 async function fetchStats(): Promise<any | null> {
@@ -189,15 +219,22 @@ export async function GET() {
       selectPushedStats()
     ]);
     const peerStats = await fetchPeerStats(peers);
+    const peerCount = resolvePeerCount(peers.length, stats, pushedStats, peerStats);
 
     if (stats) {
       const payload = {
         ok: true,
         source: "indexer",
-        peers: peers.length,
+        peers: peerCount,
         stats,
         verified: true,
         last_updated: stats.last_block_time ?? Math.floor(Date.now() / 1000),
+        diagnostics: {
+          announce_peers: peers.length,
+          has_pushed_stats: Boolean(pushedStats),
+          has_peer_stats: Boolean(peerStats),
+          has_snapshot: Boolean(snapshot)
+        },
         kv_enabled: kvEnabled
       };
       cachedResult = { expiresAt: Date.now() + CHAIN_SNAPSHOT_CACHE_MS, payload };
@@ -208,10 +245,16 @@ export async function GET() {
       const payload = {
         ok: true,
         source: "push",
-        peers: peers.length,
+        peers: peerCount,
         stats: pushedStats,
         verified: false,
         last_updated: pushedStats.last_block_time ?? Math.floor(Date.now() / 1000),
+        diagnostics: {
+          announce_peers: peers.length,
+          has_pushed_stats: true,
+          has_peer_stats: Boolean(peerStats),
+          has_snapshot: Boolean(snapshot)
+        },
         kv_enabled: kvEnabled
       };
       cachedResult = { expiresAt: Date.now() + CHAIN_SNAPSHOT_CACHE_MS, payload };
@@ -222,10 +265,16 @@ export async function GET() {
       const payload = {
         ok: true,
         source: "peer",
-        peers: peers.length,
+        peers: peerCount,
         stats: peerStats,
         verified: false,
         last_updated: peerStats.last_block_time ?? Math.floor(Date.now() / 1000),
+        diagnostics: {
+          announce_peers: peers.length,
+          has_pushed_stats: false,
+          has_peer_stats: true,
+          has_snapshot: Boolean(snapshot)
+        },
         kv_enabled: kvEnabled
       };
       cachedResult = { expiresAt: Date.now() + CHAIN_SNAPSHOT_CACHE_MS, payload };
@@ -252,14 +301,23 @@ export async function GET() {
     const lastUpdated = selected?.received_at ?? 0;
     const stale = lastUpdated > 0 ? Math.floor(Date.now() / 1000) - lastUpdated > STALE_SECONDS : true;
 
+    const fallbackStats = selected ? snapshotToStats(selected) : null;
     const payload = {
       ok: true,
       source,
-      peers: peers.length,
+      peers: resolvePeerCount(peerCount, fallbackStats),
+      stats: fallbackStats,
       snapshot: selected,
       stale,
       verified: Boolean(snapshot),
       last_updated: lastUpdated,
+      diagnostics: {
+        announce_peers: peers.length,
+        has_pushed_stats: false,
+        has_peer_stats: false,
+        has_snapshot: Boolean(snapshot),
+        has_pending: source === "pending"
+      },
       kv_enabled: kvEnabled
     };
     cachedResult = { expiresAt: Date.now() + CHAIN_SNAPSHOT_CACHE_MS, payload };
