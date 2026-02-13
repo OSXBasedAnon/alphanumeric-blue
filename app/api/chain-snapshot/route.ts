@@ -21,6 +21,10 @@ const PEER_STATS_MAX_SUCCESSES = Number(process.env.PEER_STATS_MAX_SUCCESSES ?? 
 const PEER_STATS_ALLOW_PRIVATE = (process.env.PEER_STATS_ALLOW_PRIVATE ?? "false").toLowerCase() === "true";
 const PUSH_STATS_ENABLED = (process.env.PUSH_STATS_ENABLED ?? "true").toLowerCase() !== "false";
 const PUSH_STATS_MAX_LAG = Number(process.env.PUSH_STATS_MAX_LAG ?? 50);
+const SIGNED_SNAPSHOT_MAX_LAG = Number(process.env.SIGNED_SNAPSHOT_MAX_LAG ?? 2);
+const STATS_MAX_AGE_SECONDS = Number(process.env.STATS_MAX_AGE_SECONDS ?? 600);
+const SOURCE_STICKY_SECONDS = Number(process.env.SOURCE_STICKY_SECONDS ?? 20);
+const SOURCE_SWITCH_MIN_HEIGHT_DELTA = Number(process.env.SOURCE_SWITCH_MIN_HEIGHT_DELTA ?? 2);
 const CHAIN_SNAPSHOT_CACHE_MS = Number(process.env.CHAIN_SNAPSHOT_CACHE_MS ?? 2000);
 
 function isPrivateIp(ip: string): boolean {
@@ -175,20 +179,20 @@ async function fetchPeerStats(peers: PeerRecord[]): Promise<any | null> {
 
 async function selectPushedStats(): Promise<any | null> {
   if (!PUSH_STATS_ENABLED) return null;
-  const latest = await getLatestStatsSnapshot();
-  if (latest) return latest;
-
   const stats = await listStatsSnapshots();
-  if (stats.length === 0) return null;
+  const latest = await getLatestStatsSnapshot();
+  const merged = latest ? [latest, ...stats] : stats;
+  if (merged.length === 0) return null;
 
-  const maxHeight = stats.reduce((max, s) => Math.max(max, s.height ?? 0), 0);
+  const maxHeight = merged.reduce((max, s) => Math.max(max, s.height ?? 0), 0);
   const minHeight = Math.max(0, maxHeight - PUSH_STATS_MAX_LAG);
-  const filtered = stats.filter((s) => (s.height ?? 0) >= minHeight);
+  const filtered = merged.filter((s) => (s.height ?? 0) >= minHeight);
   if (filtered.length === 0) return null;
 
   filtered.sort((a, b) => {
     if (b.height !== a.height) return b.height - a.height;
-    return b.last_block_time - a.last_block_time;
+    if (b.last_block_time !== a.last_block_time) return b.last_block_time - a.last_block_time;
+    return (b.received_at ?? 0) - (a.received_at ?? 0);
   });
 
   return filtered[0] ?? null;
@@ -199,8 +203,15 @@ type CachedResult = {
   payload: unknown;
 };
 
+type SourceSelection = {
+  source: "indexer" | "push" | "peer" | "snapshot" | "pending";
+  height: number;
+  expiresAt: number;
+};
+
 let cachedResult: CachedResult | null = null;
 let inflight: Promise<NextResponse> | null = null;
+let stickySelection: SourceSelection | null = null;
 
 export async function GET() {
   const nowMs = Date.now();
@@ -212,30 +223,85 @@ export async function GET() {
   }
 
   inflight = (async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
     const kvEnabled = Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-    const [snapshot, peers, stats, pushedStats] = await Promise.all([
+    const [snapshot, peers, stats, pushedStats, pending] = await Promise.all([
       getHeaderSnapshot(),
       listPeers(),
       fetchStats(),
-      selectPushedStats()
+      selectPushedStats(),
+      listPendingSnapshots()
     ]);
     const dedupedPeers = dedupePeersByEndpoint(peers);
     const peerStats = await fetchPeerStats(dedupedPeers);
     const peerCount = resolvePeerCount(dedupedPeers.length, stats, pushedStats, peerStats);
+    const sortedPending = pending.sort((a, b) => {
+      if (b.snapshot.height !== a.snapshot.height) return b.snapshot.height - a.snapshot.height;
+      return b.received_at - a.received_at;
+    });
+    const topPending = sortedPending[0] ?? null;
+    const signedHeight = Math.max(snapshot?.height ?? 0, topPending?.snapshot.height ?? 0);
 
-    if (stats) {
+    const isTooFarBehindSigned = (candidate: any | null): boolean => {
+      if (!candidate || signedHeight === 0) return false;
+      return Number(candidate.height ?? 0) < Math.max(0, signedHeight - SIGNED_SNAPSHOT_MAX_LAG);
+    };
+
+    const networkCandidates = [
+      { source: "indexer" as const, stats },
+      { source: "push" as const, stats: pushedStats },
+      { source: "peer" as const, stats: peerStats }
+    ]
+      .filter((c) => c.stats && !isTooFarBehindSigned(c.stats))
+      .filter((c) => {
+        const observed = Number(c.stats.received_at ?? c.stats.last_block_time ?? 0);
+        return observed > 0 && Math.max(0, nowSec - observed) <= STATS_MAX_AGE_SECONDS;
+      })
+      .sort((a, b) => {
+        const heightA = Number(a.stats.height ?? 0);
+        const heightB = Number(b.stats.height ?? 0);
+        if (heightB !== heightA) return heightB - heightA;
+        const timeA = Number(a.stats.last_block_time ?? 0);
+        const timeB = Number(b.stats.last_block_time ?? 0);
+        return timeB - timeA;
+      });
+
+    let bestNetwork = networkCandidates[0] ?? null;
+    if (bestNetwork && stickySelection && stickySelection.expiresAt >= nowSec) {
+      const stickyCandidate = networkCandidates.find((c) => c.source === stickySelection?.source);
+      if (stickyCandidate) {
+        const stickyHeight = Number(stickyCandidate.stats.height ?? 0);
+        const bestHeight = Number(bestNetwork.stats.height ?? 0);
+        if (stickyHeight + SOURCE_SWITCH_MIN_HEIGHT_DELTA >= bestHeight) {
+          bestNetwork = stickyCandidate;
+        }
+      }
+    }
+    const snapshotStats = snapshot ? snapshotToStats(snapshot) : null;
+    const pendingStats = topPending ? snapshotToStats(topPending.snapshot) : null;
+
+    if (snapshotStats && (!bestNetwork || snapshotStats.height >= Number(bestNetwork.stats.height ?? 0))) {
+      stickySelection = {
+        source: "snapshot",
+        height: snapshotStats.height,
+        expiresAt: nowSec + SOURCE_STICKY_SECONDS
+      };
       const payload = {
         ok: true,
-        source: "indexer",
+        source: "snapshot",
         peers: peerCount,
-        stats,
+        stats: snapshotStats,
+        snapshot,
         verified: true,
-        last_updated: stats.last_block_time ?? Math.floor(Date.now() / 1000),
+        verify_state: "verified",
+        verify_reason: "signed_snapshot_available",
+        last_updated: snapshot?.received_at ?? Math.floor(Date.now() / 1000),
         diagnostics: {
           announce_peers: dedupedPeers.length,
           has_pushed_stats: Boolean(pushedStats),
           has_peer_stats: Boolean(peerStats),
-          has_snapshot: Boolean(snapshot)
+          has_snapshot: Boolean(snapshot),
+          has_pending: sortedPending.length > 0
         },
         kv_enabled: kvEnabled
       };
@@ -243,19 +309,29 @@ export async function GET() {
       return response(payload);
     }
 
-    if (pushedStats) {
+    if (bestNetwork && (!pendingStats || Number(bestNetwork.stats.height ?? 0) >= pendingStats.height)) {
+      stickySelection = {
+        source: bestNetwork.source,
+        height: Number(bestNetwork.stats.height ?? 0),
+        expiresAt: nowSec + SOURCE_STICKY_SECONDS
+      };
+      const verified = bestNetwork.source === "indexer" || Boolean(snapshot);
       const payload = {
         ok: true,
-        source: "push",
+        source: bestNetwork.source,
         peers: peerCount,
-        stats: pushedStats,
-        verified: false,
-        last_updated: pushedStats.last_block_time ?? Math.floor(Date.now() / 1000),
+        stats: bestNetwork.stats,
+        snapshot,
+        verified,
+        verify_state: verified ? "verified" : "pending",
+        verify_reason: verified ? "signed_snapshot_available" : "awaiting_signed_snapshot_quorum",
+        last_updated: Number(bestNetwork.stats.last_block_time ?? Math.floor(Date.now() / 1000)),
         diagnostics: {
           announce_peers: dedupedPeers.length,
-          has_pushed_stats: true,
+          has_pushed_stats: Boolean(pushedStats),
           has_peer_stats: Boolean(peerStats),
-          has_snapshot: Boolean(snapshot)
+          has_snapshot: Boolean(snapshot),
+          has_pending: sortedPending.length > 0
         },
         kv_enabled: kvEnabled
       };
@@ -263,19 +339,28 @@ export async function GET() {
       return response(payload);
     }
 
-    if (peerStats) {
+    if (pendingStats) {
+      stickySelection = {
+        source: "pending",
+        height: pendingStats.height,
+        expiresAt: nowSec + SOURCE_STICKY_SECONDS
+      };
       const payload = {
         ok: true,
-        source: "peer",
-        peers: peerCount,
-        stats: peerStats,
+        source: "pending",
+        peers: resolvePeerCount(peerCount, pendingStats),
+        stats: pendingStats,
+        snapshot: topPending?.snapshot,
         verified: false,
-        last_updated: peerStats.last_block_time ?? Math.floor(Date.now() / 1000),
+        verify_state: "pending",
+        verify_reason: "awaiting_signed_snapshot_quorum",
+        last_updated: topPending?.received_at ?? Math.floor(Date.now() / 1000),
         diagnostics: {
           announce_peers: dedupedPeers.length,
-          has_pushed_stats: false,
-          has_peer_stats: true,
-          has_snapshot: Boolean(snapshot)
+          has_pushed_stats: Boolean(pushedStats),
+          has_peer_stats: Boolean(peerStats),
+          has_snapshot: Boolean(snapshot),
+          has_pending: true
         },
         kv_enabled: kvEnabled
       };
@@ -283,42 +368,33 @@ export async function GET() {
       return response(payload);
     }
 
-    let selected = snapshot;
-    let source: "snapshot" | "pending" = "snapshot";
-
-    if (!selected) {
-      const pending = await listPendingSnapshots();
-      if (pending.length > 0) {
-        pending.sort((a, b) => {
-          if (b.snapshot.height !== a.snapshot.height) {
-            return b.snapshot.height - a.snapshot.height;
-          }
-          return b.received_at - a.received_at;
-        });
-        selected = pending[0].snapshot;
-        source = "pending";
-      }
-    }
-
-    const lastUpdated = selected?.received_at ?? 0;
+    const lastUpdated = snapshot?.received_at ?? 0;
     const stale = lastUpdated > 0 ? Math.floor(Date.now() / 1000) - lastUpdated > STALE_SECONDS : true;
-
-    const fallbackStats = selected ? snapshotToStats(selected) : null;
+    const fallbackStats = snapshot ? snapshotToStats(snapshot) : null;
+    const fallbackSource: "snapshot" | "pending" = snapshot ? "snapshot" : "pending";
+    const verified = Boolean(snapshot);
+    stickySelection = {
+      source: fallbackSource,
+      height: fallbackStats?.height ?? 0,
+      expiresAt: nowSec + SOURCE_STICKY_SECONDS
+    };
     const payload = {
       ok: true,
-      source,
+      source: fallbackSource,
       peers: resolvePeerCount(peerCount, fallbackStats),
       stats: fallbackStats,
-      snapshot: selected,
+      snapshot,
       stale,
-      verified: Boolean(snapshot),
+      verified,
+      verify_state: verified ? "verified" : "pending",
+      verify_reason: verified ? "signed_snapshot_available" : "awaiting_signed_snapshot_quorum",
       last_updated: lastUpdated,
       diagnostics: {
         announce_peers: dedupedPeers.length,
         has_pushed_stats: false,
         has_peer_stats: false,
         has_snapshot: Boolean(snapshot),
-        has_pending: source === "pending"
+        has_pending: sortedPending.length > 0
       },
       kv_enabled: kvEnabled
     };

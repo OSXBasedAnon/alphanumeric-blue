@@ -1,6 +1,5 @@
 import Image from "next/image";
-import MetricsStrip from "./components/MetricsStrip";
-import SnapshotHistory from "./components/SnapshotHistory";
+import NetworkWorkbench from "./components/NetworkWorkbench";
 import StatusPanel from "./components/StatusPanel";
 
 export default function Page() {
@@ -50,8 +49,6 @@ export default function Page() {
         </div>
       </section>
 
-      <MetricsStrip />
-
       <section className="grid">
         <div className="card">
           <h2>Discovery</h2>
@@ -80,26 +77,7 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="flow">
-        <h2>How It Works</h2>
-        <div className="flow-row">
-          <div className="flow-step">
-            <span>1</span>
-            <h3>Discovery</h3>
-            <p>Nodes announce signed status to the gateway.</p>
-          </div>
-          <div className="flow-step">
-            <span>2</span>
-            <h3>Connect</h3>
-            <p>Clients fetch ranked peers and connect to the P2P mesh.</p>
-          </div>
-          <div className="flow-step">
-            <span>3</span>
-            <h3>Sync</h3>
-            <p>Chain data syncs directly from verified nodes.</p>
-          </div>
-        </div>
-      </section>
+      <NetworkWorkbench />
 
       <section className="download">
         <div className="download-card">
@@ -120,8 +98,6 @@ export default function Page() {
         </div>
       </section>
 
-      <SnapshotHistory />
-
       <section className="specs">
         <h2>Signed Announce Payload</h2>
         <pre>
@@ -137,6 +113,16 @@ export default function Page() {
   "signature": "<ed25519 signature>"
 }`}
         </pre>
+      </section>
+
+      <section className="flow-lite">
+        <h2>How It Works</h2>
+        <div className="flow-lite-row">
+          <div className="flow-lite-step"><strong>1.</strong> Nodes announce signed state.</div>
+          <div className="flow-lite-step"><strong>2.</strong> Clients discover and rank peers.</div>
+          <div className="flow-lite-step"><strong>3.</strong> Gateway tracks signed headers and pending quorum.</div>
+          <div className="flow-lite-step"><strong>4.</strong> Clients sync from canonical chain peers.</div>
+        </div>
       </section>
     </main>
   );
