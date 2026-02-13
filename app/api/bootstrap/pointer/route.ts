@@ -16,10 +16,15 @@ type BootstrapLatest = {
 const LATEST_KEY = "bootstrap:latest";
 
 function requireAuth(req: Request): boolean {
-  const expected = process.env.BOOTSTRAP_PUBLISH_TOKEN;
+  const expectedRaw = process.env.BOOTSTRAP_PUBLISH_TOKEN;
+  const expected = expectedRaw?.trim();
   if (!expected) return false;
-  const got = req.headers.get("authorization") ?? "";
-  return got === `Bearer ${expected}`;
+
+  const got = (req.headers.get("authorization") ?? "").trim();
+
+  if (got === `Bearer ${expected}`) return true;
+  if (expected.toLowerCase().startsWith("bearer ")) return got === expected;
+  return got === expected;
 }
 
 export async function POST(request: Request) {
