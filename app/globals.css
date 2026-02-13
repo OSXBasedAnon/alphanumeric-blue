@@ -359,11 +359,45 @@ html, body {
 .ops-chart-card,
 .explorer-card,
 .tx-card,
-.peer-mini {
+.peer-mini,
+.ops-metrics-card {
   background: rgba(14, 23, 48, 0.86);
   border: 1px solid rgba(120, 150, 220, 0.22);
   border-radius: 12px;
   padding: 12px;
+}
+
+.signal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.signal-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(94, 122, 190, 0.2);
+  background: rgba(8, 13, 28, 0.55);
+}
+
+.signal-item span {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.signal-item strong {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.82rem;
+  color: #d6e6ff;
+}
+
+.signal-item.wide {
+  grid-column: 1 / -1;
 }
 
 .ops-chart-title,
@@ -445,6 +479,13 @@ html, body {
   color: var(--muted);
   font-size: 0.9rem;
   padding: 8px 2px;
+}
+
+.ops-feed-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
 }
 
 .flow-lite {
@@ -598,6 +639,12 @@ pre {
   }
   .ops-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .signal-grid {
+    grid-template-columns: 1fr;
+  }
+  .ops-feed-grid {
+    grid-template-columns: 1fr;
   }
   .explorer-row {
     grid-template-columns: 60px 1fr 78px;
