@@ -5,6 +5,7 @@ import {
   listPendingSnapshots,
   listStatsSnapshots,
   getLatestStatsSnapshot,
+  dedupePeersByEndpoint,
   type HeaderSnapshot,
   type PeerRecord
 } from "@/lib/storage";
@@ -218,8 +219,9 @@ export async function GET() {
       fetchStats(),
       selectPushedStats()
     ]);
-    const peerStats = await fetchPeerStats(peers);
-    const peerCount = resolvePeerCount(peers.length, stats, pushedStats, peerStats);
+    const dedupedPeers = dedupePeersByEndpoint(peers);
+    const peerStats = await fetchPeerStats(dedupedPeers);
+    const peerCount = resolvePeerCount(dedupedPeers.length, stats, pushedStats, peerStats);
 
     if (stats) {
       const payload = {
@@ -230,7 +232,7 @@ export async function GET() {
         verified: true,
         last_updated: stats.last_block_time ?? Math.floor(Date.now() / 1000),
         diagnostics: {
-          announce_peers: peers.length,
+          announce_peers: dedupedPeers.length,
           has_pushed_stats: Boolean(pushedStats),
           has_peer_stats: Boolean(peerStats),
           has_snapshot: Boolean(snapshot)
@@ -250,7 +252,7 @@ export async function GET() {
         verified: false,
         last_updated: pushedStats.last_block_time ?? Math.floor(Date.now() / 1000),
         diagnostics: {
-          announce_peers: peers.length,
+          announce_peers: dedupedPeers.length,
           has_pushed_stats: true,
           has_peer_stats: Boolean(peerStats),
           has_snapshot: Boolean(snapshot)
@@ -270,7 +272,7 @@ export async function GET() {
         verified: false,
         last_updated: peerStats.last_block_time ?? Math.floor(Date.now() / 1000),
         diagnostics: {
-          announce_peers: peers.length,
+          announce_peers: dedupedPeers.length,
           has_pushed_stats: false,
           has_peer_stats: true,
           has_snapshot: Boolean(snapshot)
@@ -312,7 +314,7 @@ export async function GET() {
       verified: Boolean(snapshot),
       last_updated: lastUpdated,
       diagnostics: {
-        announce_peers: peers.length,
+        announce_peers: dedupedPeers.length,
         has_pushed_stats: false,
         has_peer_stats: false,
         has_snapshot: Boolean(snapshot),

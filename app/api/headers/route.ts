@@ -3,7 +3,14 @@ import { canonicalize } from "@/lib/canonical";
 import { verifyEd25519 } from "@/lib/crypto";
 import { rateLimitScoped } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/request";
-import { getHeaderSnapshot, listPeers, saveHeaderSnapshot, upsertPendingSnapshot, type HeaderSnapshot } from "@/lib/storage";
+import {
+  dedupePeersByEndpoint,
+  getHeaderSnapshot,
+  listPeers,
+  saveHeaderSnapshot,
+  upsertPendingSnapshot,
+  type HeaderSnapshot
+} from "@/lib/storage";
 
 const MAX_SKEW_SECONDS = Number(process.env.MAX_SKEW_SECONDS ?? 600);
 const RATE_LIMIT = Number(process.env.HEADERS_RL_LIMIT ?? 10);
@@ -122,7 +129,7 @@ export async function POST(req: NextRequest) {
   };
 
   const headerKey = `${snapshot.network_id ?? "unknown"}:${snapshot.height}:${snapshot.headers.at(-1)?.hash ?? "none"}`;
-  const peers = await listPeers();
+  const peers = dedupePeersByEndpoint(await listPeers());
   const bootstrapMode = peers.length < BOOTSTRAP_QUORUM_THRESHOLD;
   const pendingTtl = bootstrapMode ? BOOTSTRAP_PENDING_WINDOW : undefined;
   const pending = await upsertPendingSnapshot(

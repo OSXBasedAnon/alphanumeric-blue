@@ -158,6 +158,31 @@ export async function listPeers(): Promise<PeerRecord[]> {
   }));
 }
 
+export function dedupePeersByEndpoint(peers: PeerRecord[]): PeerRecord[] {
+  const bestByEndpoint = new Map<string, PeerRecord>();
+
+  for (const peer of peers) {
+    const endpoint = `${peer.ip}:${peer.port}`;
+    const existing = bestByEndpoint.get(endpoint);
+    if (!existing) {
+      bestByEndpoint.set(endpoint, peer);
+      continue;
+    }
+
+    if ((peer.last_seen ?? 0) > (existing.last_seen ?? 0)) {
+      bestByEndpoint.set(endpoint, peer);
+      continue;
+    }
+
+    if ((peer.height ?? 0) > (existing.height ?? 0)) {
+      bestByEndpoint.set(endpoint, peer);
+      continue;
+    }
+  }
+
+  return Array.from(bestByEndpoint.values());
+}
+
 export async function saveHeaderSnapshot(snapshot: HeaderSnapshot): Promise<void> {
   if (!kvEnabled()) {
     memorySnapshot = snapshot;

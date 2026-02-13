@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
   title: "alphanumeric.blue",
@@ -23,7 +24,10 @@ export default function RootLayout({
         />
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }

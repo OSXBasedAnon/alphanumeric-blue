@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listPeers } from "@/lib/storage";
+import { dedupePeersByEndpoint, listPeers } from "@/lib/storage";
 import { sortPeers } from "@/lib/peerScore";
 
 function response(body: unknown, status = 200) {
@@ -15,7 +15,7 @@ function response(body: unknown, status = 200) {
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 50)));
-  const peers = await listPeers();
+  const peers = dedupePeersByEndpoint(await listPeers());
   const sorted = sortPeers(peers).slice(0, limit);
   return response({ ok: true, count: sorted.length, peers: sorted });
 }
