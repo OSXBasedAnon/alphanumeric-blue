@@ -18,6 +18,13 @@ const LATEST_KEY = "bootstrap:latest";
 
 type AuthCheck = "ok" | "missing" | "mismatch";
 
+function jsonError(status: number, error: string, extra?: Record<string, unknown>) {
+  return NextResponse.json(
+    { ok: false, error, ...(extra ?? {}) },
+    { status, headers: { "cache-control": "no-store" } }
+  );
+}
+
 function normalizeToken(raw: string): string {
   let t = raw.trim();
   if (t.toLowerCase().startsWith("bearer ")) t = t.slice(7).trim();
@@ -49,17 +56,24 @@ function checkAuth(req: Request): AuthCheck {
 export async function POST(request: Request) {
   const auth = checkAuth(request);
   if (auth === "missing") {
-    return NextResponse.json(
-      { ok: false, error: "server_missing_publish_token" },
-      { status: 500, headers: { "cache-control": "no-store" } }
-    );
+    return jsonError(500, "server_missing_publish_token");
   }
 
   if (auth !== "ok") {
-    return NextResponse.json(
-      { ok: false, error: "unauthorized" },
-      { status: 401, headers: { "cache-control": "no-store" } }
-    );
+    return jsonError(401, "unauthorized");
+  }
+
+  // Fail with a useful error if the deployment is missing required integrations.
+  // (Otherwise Vercel will return a generic 500 and debugging is painful.)
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return jsonError(500, "server_missing_blob_token", {
+      hint: "Set BLOB_READ_WRITE_TOKEN in Vercel Environment Variables (production)."
+    });
+  }
+  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
+    return jsonError(500, "server_missing_kv_env", {
+      hint: "Ensure Vercel KV is connected and KV_REST_API_URL / KV_REST_API_TOKEN exist in production."
+    });
   }
 
   const url = new URL(request.url);
@@ -90,7 +104,13 @@ export async function POST(request: Request) {
     ? `bootstrap/blockchain.db-h${height ?? "x"}-${tipHash}.zip`
     : `bootstrap/blockchain.db-h${height ?? "x"}.zip`;
 
-  const blob = await put(pathname, body, { access: "public" });
+  let blob: { url: string };
+  try {
+    blob = await put(pathname, body, { access: "public" });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonError(500, "blob_put_failed", { message: msg });
+  }
 
   const latest: BootstrapLatest = {
     url: blob.url,
@@ -102,7 +122,16 @@ export async function POST(request: Request) {
     updated_at: updatedAtRaw ? Number(updatedAtRaw) : Math.floor(Date.now() / 1000)
   };
 
-  await kv.set(LATEST_KEY, latest);
+  try {
+    await kv.set(LATEST_KEY, latest);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Blob upload succeeded, but pointer update failed; allow operator to recover via /api/bootstrap/pointer.
+    return jsonError(500, "kv_set_failed", {
+      message: msg,
+      blob_url: blob.url
+    });
+  }
 
   return NextResponse.json(
     { ok: true, blob, latest },
