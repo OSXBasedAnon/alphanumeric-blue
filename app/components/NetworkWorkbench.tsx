@@ -158,7 +158,6 @@ export default function NetworkWorkbench() {
   const difficulty = snapshot?.stats?.difficulty;
 
   const sourceHeaders = snapshot?.snapshot?.headers ?? topPending?.snapshot?.headers ?? [];
-  const tipHeader = sourceHeaders.at(-1);
   const verifyLabel = snapshot?.verify_state ?? (snapshot?.verified ? "verified" : "pending");
   const avgBlockIntervalSec = useMemo(() => {
     if (!Array.isArray(sourceHeaders) || sourceHeaders.length < 2) return null;
@@ -250,7 +249,7 @@ export default function NetworkWorkbench() {
           <div className="ops-metrics-card">
             <div className="panel-title">Chain Signals</div>
             <div className="signal-grid">
-              <div className="signal-item">
+              <div className="signal-item tone-cyan">
                 <span>Difficulty</span>
                 <strong>{formatNumber(difficulty)}</strong>
               </div>
@@ -258,19 +257,19 @@ export default function NetworkWorkbench() {
                 <span>Hashrate</span>
                 <strong>{formatHashrate(hashrate)}</strong>
               </div>
-              <div className="signal-item tone-amber">
+              <div className="signal-item">
                 <span>Tip Age</span>
                 <strong>{formatSeconds(tipAgeSeconds)}</strong>
               </div>
-              <div className="signal-item tone-cyan">
+              <div className="signal-item">
                 <span>Avg Block Interval</span>
                 <strong>{formatSeconds(avgBlockIntervalSec ?? NaN)}</strong>
               </div>
-              <div className="signal-item tone-violet">
+              <div className="signal-item">
                 <span>Pending Signers</span>
                 <strong>{pendingSigners}</strong>
               </div>
-              <div className="signal-item tone-violet">
+              <div className="signal-item">
                 <span>Competing Tips</span>
                 <strong>{Math.max(0, topHeightPendingVariants - 1)}</strong>
               </div>
@@ -281,18 +280,6 @@ export default function NetworkWorkbench() {
               <div className="signal-item tone-green">
                 <span>Fresh Peers (60s)</span>
                 <strong>{freshPeers60s}</strong>
-              </div>
-              <div className="signal-item wide tone-violet">
-                <span>Verify Reason</span>
-                <strong>{snapshot?.verify_reason ?? "-"}</strong>
-              </div>
-              <div className="signal-item wide tone-violet">
-                <span>Tip Hash</span>
-                <strong>{shortHash(tipHeader?.hash)}</strong>
-              </div>
-              <div className="signal-item wide tone-violet">
-                <span>Prev Hash</span>
-                <strong>{shortHash(tipHeader?.prev_hash)}</strong>
               </div>
             </div>
           </div>
