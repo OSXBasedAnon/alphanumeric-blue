@@ -179,43 +179,20 @@ export default function NetworkWorkbench() {
   const peerList = peers?.peers ?? [];
   const agreementPeers = peerList.filter((p) => Number(p.height ?? -1) === currentHeight).length;
   const freshPeers60s = peerList.filter((p) => Math.max(0, Math.floor(Date.now() / 1000) - Number(p.last_seen ?? 0)) <= 60).length;
-  const trend = useMemo(() => {
+  const trendBars = useMemo(() => {
     const points = (history?.history ?? []).slice(0, 16).reverse();
-    if (points.length === 0) {
-      return {
-        flat: true,
-        points: [] as Array<{ h: number; ts: number; norm: number }>
-      };
-    }
-
+    if (points.length === 0) return [] as Array<{ h: number; ts: number; pct: number; tone: number }>;
     const minHeight = Math.min(...points.map((p) => p.height));
     const maxHeight = Math.max(...points.map((p) => p.height));
-    const span = Math.max(0, maxHeight - minHeight);
-    const flat = span === 0;
-    const normalized = points.map((p, idx) => {
-      const base = flat ? 0.5 + (((idx % 4) - 1.5) * 0.05) : (p.height - minHeight) / span;
-      const norm = Math.max(0.12, Math.min(0.88, base));
-      return { h: p.height, ts: p.received_at, norm };
+    const span = Math.max(1, maxHeight - minHeight);
+    const flat = maxHeight === minHeight;
+    return points.map((p, idx) => {
+      const normalized = flat ? 0.62 : (p.height - minHeight) / span;
+      const pct = Math.max(26, Math.min(94, Math.round(26 + normalized * 68)));
+      const tone = points.length <= 1 ? 1 : idx / (points.length - 1);
+      return { h: p.height, ts: p.received_at, pct, tone };
     });
-
-    return { flat, points: normalized };
   }, [history]);
-
-  const sparkline = useMemo(() => {
-    if (trend.points.length === 0) return null;
-    const width = 100;
-    const height = 40;
-    const pad = 4;
-    const n = trend.points.length;
-    const coords = trend.points.map((p, i) => {
-      const x = n === 1 ? width / 2 : (i / (n - 1)) * width;
-      const y = height - pad - p.norm * (height - pad * 2);
-      return { x, y, h: p.h, ts: p.ts };
-    });
-    const line = coords.map((c) => `${c.x.toFixed(2)},${c.y.toFixed(2)}`).join(" ");
-    const area = `0,${height} ${line} ${width},${height}`;
-    return { width, height, coords, line, area };
-  }, [trend]);
 
   return (
     <section className="workbench">
@@ -256,22 +233,18 @@ export default function NetworkWorkbench() {
           <div className="ops-chart-card">
             <div className="ops-chart-title">Snapshot Height Trend</div>
             <div className="ops-chart">
-              {sparkline ? (
-                <svg className={`ops-spark ${trend.flat ? "flat" : ""}`} viewBox={`0 0 ${sparkline.width} ${sparkline.height}`} preserveAspectRatio="none">
-                  <polyline className="ops-spark-area" points={sparkline.area} />
-                  <polyline className="ops-spark-line" points={sparkline.line} />
-                  {sparkline.coords.map((c, idx) => (
-                    <circle
-                      key={`${c.ts}-${idx}`}
-                      className="ops-spark-dot"
-                      cx={c.x}
-                      cy={c.y}
-                      r={1.2}
-                    >
-                      <title>{`Height ${c.h} - ${formatAgo(c.ts)}`}</title>
-                    </circle>
-                  ))}
-                </svg>
+              {trendBars.length > 0 ? (
+                trendBars.map((bar, idx) => (
+                  <div
+                    key={`${bar.ts}-${idx}`}
+                    className="ops-bar"
+                    title={`Height ${bar.h} - ${formatAgo(bar.ts)}`}
+                    style={{
+                      height: `${bar.pct}%`,
+                      opacity: 0.3 + bar.tone * 0.7
+                    }}
+                  />
+                ))
               ) : (
                 <div className="ops-spark-empty">No recent snapshot history.</div>
               )}
