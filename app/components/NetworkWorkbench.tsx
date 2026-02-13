@@ -118,7 +118,7 @@ export default function NetworkWorkbench() {
         .catch(() => null);
 
     load();
-    const interval = setInterval(load, 10000);
+    const interval = setInterval(load, 3000);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -188,7 +188,7 @@ export default function NetworkWorkbench() {
                     <div
                       key={`${bar.ts}-${idx}`}
                       className="ops-bar"
-                      title={`Height ${bar.h} • ${formatAgo(bar.ts)}`}
+                      title={`Height ${bar.h} - ${formatAgo(bar.ts)}`}
                       style={{ height: `${bar.pct}%` }}
                     />
                   ))

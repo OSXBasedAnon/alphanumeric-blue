@@ -50,7 +50,7 @@ export default function StatusPanel() {
         });
 
     load();
-    const interval = setInterval(load, 10000);
+    const interval = setInterval(load, 3000);
     return () => {
       cancelled = true;
       clearInterval(interval);

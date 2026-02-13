@@ -23,9 +23,9 @@ const PUSH_STATS_ENABLED = (process.env.PUSH_STATS_ENABLED ?? "true").toLowerCas
 const PUSH_STATS_MAX_LAG = Number(process.env.PUSH_STATS_MAX_LAG ?? 50);
 const SIGNED_SNAPSHOT_MAX_LAG = Number(process.env.SIGNED_SNAPSHOT_MAX_LAG ?? 2);
 const STATS_MAX_AGE_SECONDS = Number(process.env.STATS_MAX_AGE_SECONDS ?? 600);
-const SOURCE_STICKY_SECONDS = Number(process.env.SOURCE_STICKY_SECONDS ?? 20);
+const SOURCE_STICKY_SECONDS = Number(process.env.SOURCE_STICKY_SECONDS ?? 6);
 const SOURCE_SWITCH_MIN_HEIGHT_DELTA = Number(process.env.SOURCE_SWITCH_MIN_HEIGHT_DELTA ?? 2);
-const CHAIN_SNAPSHOT_CACHE_MS = Number(process.env.CHAIN_SNAPSHOT_CACHE_MS ?? 2000);
+const CHAIN_SNAPSHOT_CACHE_MS = Number(process.env.CHAIN_SNAPSHOT_CACHE_MS ?? 750);
 
 function isPrivateIp(ip: string): boolean {
   const parts = ip.split(".");
@@ -104,6 +104,15 @@ function resolvePeerCount(primary: number, ...candidates: Array<unknown>): numbe
     }
   }
   return best;
+}
+
+function resolveObservedAt(candidate: any | null | undefined): number {
+  if (!candidate || typeof candidate !== "object") return 0;
+  const received = Number(candidate.received_at ?? 0);
+  if (Number.isFinite(received) && received > 0) return received;
+  const lastBlock = Number(candidate.last_block_time ?? 0);
+  if (Number.isFinite(lastBlock) && lastBlock > 0) return lastBlock;
+  return 0;
 }
 
 async function fetchStats(): Promise<any | null> {
@@ -309,7 +318,7 @@ export async function GET() {
       return response(payload);
     }
 
-    if (bestNetwork && (!pendingStats || Number(bestNetwork.stats.height ?? 0) >= pendingStats.height)) {
+    if (bestNetwork && (!pendingStats || Number(bestNetwork.stats.height ?? 0) > pendingStats.height)) {
       stickySelection = {
         source: bestNetwork.source,
         height: Number(bestNetwork.stats.height ?? 0),
@@ -325,7 +334,7 @@ export async function GET() {
         verified,
         verify_state: verified ? "verified" : "pending",
         verify_reason: verified ? "signed_snapshot_available" : "awaiting_signed_snapshot_quorum",
-        last_updated: Number(bestNetwork.stats.last_block_time ?? Math.floor(Date.now() / 1000)),
+        last_updated: resolveObservedAt(bestNetwork.stats) || Math.floor(Date.now() / 1000),
         diagnostics: {
           announce_peers: dedupedPeers.length,
           has_pushed_stats: Boolean(pushedStats),
