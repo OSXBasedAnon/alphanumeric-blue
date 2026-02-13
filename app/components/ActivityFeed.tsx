@@ -95,44 +95,41 @@ export default function ActivityFeed() {
   const transactions = coerceTxList(snapshot?.stats).slice(0, 3);
 
   return (
-    <section className="ops-feed-shell">
-      <div className="ops-feed-grid">
-        <div className="explorer-card">
-          <div className="panel-title">Explorer</div>
-          <div className="explorer-list">
-            {headers.length > 0 ? (
-              headers.map((header) => (
-                <div key={`${header.height}-${header.hash}`} className="explorer-row">
-                  <span className="explorer-height">#{header.height}</span>
-                  <span className="explorer-hash">{shortHash(header.hash)}</span>
-                  <span className="explorer-time">{formatAgo(header.timestamp)}</span>
-                </div>
-              ))
-            ) : (
-              <div className="explorer-empty">No signed headers available yet.</div>
-            )}
-          </div>
-        </div>
-
-        <div className="tx-card">
-          <div className="panel-title">Latest Transactions</div>
-          <div className="tx-list">
-            {transactions.length > 0 ? (
-              transactions.map((tx, idx) => (
-                <div key={idx} className="tx-row">
-                  <span className="tx-hash">{shortHash(String(tx?.hash ?? tx?.id ?? tx?.txid ?? ""))}</span>
-                  <span className="tx-amount">{formatNumber(tx?.amount ?? tx?.value ?? tx?.fee ?? "")}</span>
-                </div>
-              ))
-            ) : (
-              <div className="explorer-empty">
-                Transaction feed not provided by upstream stats yet.
+    <section className="ops-feed-grid">
+      <div className="explorer-card">
+        <div className="panel-title">Explorer</div>
+        <div className="explorer-list">
+          {headers.length > 0 ? (
+            headers.map((header) => (
+              <div key={`${header.height}-${header.hash}`} className="explorer-row">
+                <span className="explorer-height">#{header.height}</span>
+                <span className="explorer-hash">{shortHash(header.hash)}</span>
+                <span className="explorer-time">{formatAgo(header.timestamp)}</span>
               </div>
-            )}
-          </div>
+            ))
+          ) : (
+            <div className="explorer-empty">No signed headers available yet.</div>
+          )}
+        </div>
+      </div>
+
+      <div className="tx-card">
+        <div className="panel-title">Latest Transactions</div>
+        <div className="tx-list">
+          {transactions.length > 0 ? (
+            transactions.map((tx, idx) => (
+              <div key={idx} className="tx-row">
+                <span className="tx-hash">{shortHash(String(tx?.hash ?? tx?.id ?? tx?.txid ?? ""))}</span>
+                <span className="tx-amount">{formatNumber(tx?.amount ?? tx?.value ?? tx?.fee ?? "")}</span>
+              </div>
+            ))
+          ) : (
+            <div className="explorer-empty">
+              Transaction feed not provided by upstream stats yet.
+            </div>
+          )}
         </div>
       </div>
     </section>
   );
 }
-

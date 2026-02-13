@@ -501,32 +501,10 @@ html, body {
   padding: 8px 2px;
 }
 
-.ops-feed-shell {
-  margin-top: 16px;
-  padding: 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(167, 126, 255, 0.4);
-  background:
-    radial-gradient(420px 180px at 10% 0%, rgba(186, 136, 255, 0.18), transparent 70%),
-    radial-gradient(420px 180px at 90% 0%, rgba(130, 98, 255, 0.18), transparent 70%),
-    rgba(34, 22, 66, 0.55);
-  box-shadow: 0 16px 36px rgba(27, 14, 58, 0.5);
-}
-
 .ops-feed-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
-}
-
-.ops-feed-shell .explorer-card,
-.ops-feed-shell .tx-card {
-  background: rgba(34, 22, 66, 0.42);
-  border-color: rgba(167, 126, 255, 0.35);
-}
-
-.ops-feed-shell .panel-title {
-  color: #ccb7ff;
 }
 
 .flow-lite {
