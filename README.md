@@ -94,3 +94,4 @@ npm run dev
 - Without `KV_REST_API_URL` and `KV_REST_API_TOKEN`, the service uses in-memory storage.
 - This is a discovery and light snapshot layer, not a consensus source of truth.
 - Bootstrap snapshot is served at `public/bootstrap/blockchain.db.zip` for cold starts.
+  - Production: `/bootstrap/blockchain.db.zip` is now a dynamic redirect to the latest Vercel Blob URL (published via `/api/bootstrap/publish`).
