@@ -8,6 +8,8 @@ type BootstrapLatest = {
   height?: number;
   tip_hash?: string;
   sha256?: string;
+  publisher_pubkey?: string;
+  manifest_sig?: string;
   updated_at: number;
 };
 
@@ -51,7 +53,13 @@ export async function POST(request: Request) {
     height: typeof input.height === "number" ? input.height : undefined,
     tip_hash: typeof input.tip_hash === "string" ? input.tip_hash : undefined,
     sha256: typeof input.sha256 === "string" ? input.sha256 : undefined,
-    updated_at: Math.floor(Date.now() / 1000)
+    publisher_pubkey:
+      typeof input.publisher_pubkey === "string" ? input.publisher_pubkey : undefined,
+    manifest_sig: typeof input.manifest_sig === "string" ? input.manifest_sig : undefined,
+    updated_at:
+      typeof input.updated_at === "number"
+        ? input.updated_at
+        : Math.floor(Date.now() / 1000)
   };
 
   await kv.set(LATEST_KEY, latest);
@@ -61,4 +69,3 @@ export async function POST(request: Request) {
     { headers: { "cache-control": "no-store" } }
   );
 }
-

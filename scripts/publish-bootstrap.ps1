@@ -33,11 +33,16 @@ if ($blobToken -and $blobToken.Trim().Length -gt 0) {
   $js = @"
 const fs = require('fs');
 const { put } = require('@vercel/blob');
+const nacl = require('tweetnacl');
 
 (async () => {
   const zipPath = process.argv[2];
   const pathname = process.argv[3];
   const cacheMaxAge = Number(process.argv[4] || '60');
+  const heightRaw = process.argv[5];
+  const tipHash = process.argv[6] || '';
+  const sha256 = process.argv[7] || '';
+  const signingSeedHex = process.env.BOOTSTRAP_SIGNING_SEED || '';
 
   const stream = fs.createReadStream(zipPath);
   const blob = await put(pathname, stream, {
@@ -48,14 +53,33 @@ const { put } = require('@vercel/blob');
     contentType: 'application/zip',
   });
 
-  process.stdout.write(JSON.stringify({ url: blob.url }));
+  const manifest = {
+    url: blob.url,
+    height: Number.isFinite(Number(heightRaw)) && Number(heightRaw) >= 0 ? Number(heightRaw) : undefined,
+    tip_hash: tipHash || undefined,
+    sha256: sha256 || undefined,
+    updated_at: Math.floor(Date.now() / 1000),
+  };
+
+  let publisher_pubkey;
+  let manifest_sig;
+  if (signingSeedHex && signingSeedHex.length === 64) {
+    const seed = Buffer.from(signingSeedHex, 'hex');
+    const kp = nacl.sign.keyPair.fromSeed(new Uint8Array(seed));
+    publisher_pubkey = Buffer.from(kp.publicKey).toString('hex');
+    const msg = Buffer.from(JSON.stringify(manifest), 'utf8');
+    const sig = nacl.sign.detached(new Uint8Array(msg), kp.secretKey);
+    manifest_sig = Buffer.from(sig).toString('hex');
+  }
+
+  process.stdout.write(JSON.stringify({ url: blob.url, manifest, publisher_pubkey, manifest_sig }));
 })().catch((e) => {
   console.error(e);
   process.exit(1);
 });
 "@
 
-  $out = & node -e $js $ZipPath $pathname 60
+  $out = & node -e $js $ZipPath $pathname 60 $Height $TipHash $sha256
   $obj = $out | ConvertFrom-Json
   if (!$obj.url) { throw "Blob upload did not return a URL" }
 
@@ -67,6 +91,9 @@ const { put } = require('@vercel/blob');
     height   = $(if ($Height -ge 0) { $Height } else { $null })
     tip_hash = $(if ($TipHash -ne "") { $TipHash } else { $null })
     sha256   = $sha256
+    updated_at = $(if ($obj.manifest -and $obj.manifest.updated_at) { [int]$obj.manifest.updated_at } else { $null })
+    publisher_pubkey = $(if ($obj.publisher_pubkey) { [string]$obj.publisher_pubkey } else { $null })
+    manifest_sig = $(if ($obj.manifest_sig) { [string]$obj.manifest_sig } else { $null })
   } | ConvertTo-Json -Depth 5
 
   Invoke-RestMethod `
