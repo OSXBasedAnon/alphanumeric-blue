@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { kv } from "@vercel/kv";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type BootstrapLatest = {
   url: string;
@@ -41,4 +42,3 @@ export async function GET() {
     }
   );
 }
-
