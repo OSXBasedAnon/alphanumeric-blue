@@ -9,6 +9,8 @@ type BootstrapLatest = {
   height?: number;
   tip_hash?: string;
   sha256?: string;
+  publisher_pubkey?: string;
+  manifest_sig?: string;
   updated_at: number;
 };
 
@@ -33,6 +35,9 @@ export async function POST(request: Request) {
   const heightRaw = url.searchParams.get("height") ?? undefined;
   const tipHash = url.searchParams.get("tip") ?? undefined;
   const sha256 = url.searchParams.get("sha256") ?? undefined;
+  const publisherPubkey = url.searchParams.get("publisher_pubkey") ?? undefined;
+  const manifestSig = url.searchParams.get("manifest_sig") ?? undefined;
+  const updatedAtRaw = url.searchParams.get("updated_at") ?? undefined;
 
   const body = await request.arrayBuffer();
   if (body.byteLength === 0) {
@@ -61,7 +66,9 @@ export async function POST(request: Request) {
     height,
     tip_hash: tipHash,
     sha256,
-    updated_at: Math.floor(Date.now() / 1000)
+    publisher_pubkey: publisherPubkey,
+    manifest_sig: manifestSig,
+    updated_at: updatedAtRaw ? Number(updatedAtRaw) : Math.floor(Date.now() / 1000)
   };
 
   await kv.set(LATEST_KEY, latest);
