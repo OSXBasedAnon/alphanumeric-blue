@@ -289,7 +289,11 @@ export async function GET() {
     const snapshotStats = snapshot ? snapshotToStats(snapshot) : null;
     const pendingStats = topPending ? snapshotToStats(topPending.snapshot) : null;
 
-    if (snapshotStats && (!bestNetwork || snapshotStats.height >= Number(bestNetwork.stats.height ?? 0))) {
+    if (
+      snapshotStats &&
+      (!pendingStats || snapshotStats.height >= pendingStats.height) &&
+      (!bestNetwork || snapshotStats.height >= Number(bestNetwork.stats.height ?? 0))
+    ) {
       stickySelection = {
         source: "snapshot",
         height: snapshotStats.height,
@@ -377,10 +381,10 @@ export async function GET() {
       return response(payload);
     }
 
+    const fallbackSource: "snapshot" | "pending" = snapshot ? "snapshot" : "pending";
     const lastUpdated = snapshot?.received_at ?? 0;
     const stale = lastUpdated > 0 ? Math.floor(Date.now() / 1000) - lastUpdated > STALE_SECONDS : true;
     const fallbackStats = snapshot ? snapshotToStats(snapshot) : null;
-    const fallbackSource: "snapshot" | "pending" = snapshot ? "snapshot" : "pending";
     const verified = Boolean(snapshot);
     stickySelection = {
       source: fallbackSource,
