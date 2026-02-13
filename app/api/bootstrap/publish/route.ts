@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { kv } from "@vercel/kv";
 
+export const runtime = "nodejs";
+
 type BootstrapLatest = {
   url: string;
   height?: number;
@@ -32,6 +34,14 @@ export async function POST(request: Request) {
   const tipHash = url.searchParams.get("tip") ?? undefined;
   const sha256 = url.searchParams.get("sha256") ?? undefined;
 
+  const body = await request.arrayBuffer();
+  if (body.byteLength === 0) {
+    return NextResponse.json(
+      { ok: false, error: "empty_body" },
+      { status: 400, headers: { "cache-control": "no-store" } }
+    );
+  }
+
   const height = heightRaw ? Number(heightRaw) : undefined;
   if (heightRaw && (!Number.isFinite(height) || height! < 0)) {
     return NextResponse.json(
@@ -44,7 +54,7 @@ export async function POST(request: Request) {
     ? `bootstrap/blockchain.db-h${height ?? "x"}-${tipHash}.zip`
     : `bootstrap/blockchain.db-h${height ?? "x"}.zip`;
 
-  const blob = await put(pathname, request.body, { access: "public" });
+  const blob = await put(pathname, body, { access: "public" });
 
   const latest: BootstrapLatest = {
     url: blob.url,
@@ -61,4 +71,3 @@ export async function POST(request: Request) {
     { headers: { "cache-control": "no-store" } }
   );
 }
-
