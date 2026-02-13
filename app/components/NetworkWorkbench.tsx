@@ -61,12 +61,6 @@ type HistoryResponse = {
   }>;
 };
 
-type PeersResponse = {
-  ok: boolean;
-  count: number;
-  peers: Array<{ node_id: string; ip: string; port: number; height: number }>;
-};
-
 function formatAgo(ts?: number): string {
   if (!ts || ts <= 0) return "-";
   const now = Math.floor(Date.now() / 1000);
@@ -106,7 +100,6 @@ export default function NetworkWorkbench() {
   const [snapshot, setSnapshot] = useState<ChainSnapshotResponse | null>(null);
   const [pending, setPending] = useState<PendingResponse | null>(null);
   const [history, setHistory] = useState<HistoryResponse | null>(null);
-  const [peers, setPeers] = useState<PeersResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,15 +107,13 @@ export default function NetworkWorkbench() {
       Promise.all([
         fetch("/api/chain-snapshot", { cache: "no-store" }).then((res) => res.json()),
         fetch("/api/pending-snapshots", { cache: "no-store" }).then((res) => res.json()),
-        fetch("/api/snapshot-history", { cache: "no-store" }).then((res) => res.json()),
-        fetch("/api/peers?limit=8", { cache: "no-store" }).then((res) => res.json())
+        fetch("/api/snapshot-history", { cache: "no-store" }).then((res) => res.json())
       ])
-        .then(([chainJson, pendingJson, historyJson, peersJson]) => {
+        .then(([chainJson, pendingJson, historyJson]) => {
           if (cancelled) return;
           setSnapshot(chainJson);
           setPending(pendingJson);
           setHistory(historyJson);
-          setPeers(peersJson);
         })
         .catch(() => null);
 
@@ -139,8 +130,8 @@ export default function NetworkWorkbench() {
   const pendingHeight = Number(topPending?.snapshot?.height ?? 0);
   const heightLag = Math.max(0, pendingHeight - currentHeight);
 
-  const headers = (snapshot?.snapshot?.headers ?? topPending?.snapshot?.headers ?? []).slice(-10).reverse();
-  const transactions = coerceTxList(snapshot?.stats).slice(0, 8);
+  const headers = (snapshot?.snapshot?.headers ?? topPending?.snapshot?.headers ?? []).slice(-3).reverse();
+  const transactions = coerceTxList(snapshot?.stats).slice(0, 3);
   const verifyLabel = snapshot?.verify_state ?? (snapshot?.verified ? "verified" : "pending");
   const bars = useMemo(() => {
     const points = (history?.history ?? []).slice(0, 16).reverse();
@@ -210,7 +201,7 @@ export default function NetworkWorkbench() {
 
         <div className="ops-column">
           <div className="explorer-card">
-            <div className="panel-title">Simple Explorer</div>
+            <div className="panel-title">Explorer</div>
             <div className="explorer-list">
               {headers.length > 0 ? (
                 headers.map((header) => (
@@ -240,21 +231,6 @@ export default function NetworkWorkbench() {
                 <div className="explorer-empty">
                   Transaction feed not provided by upstream stats yet.
                 </div>
-              )}
-            </div>
-          </div>
-
-          <div className="peer-mini">
-            <div className="panel-title">Top Peers</div>
-            <div className="peer-mini-list">
-              {(peers?.peers ?? []).slice(0, 5).map((peer) => (
-                <div key={peer.node_id} className="peer-mini-row">
-                  <span>{peer.ip}:{peer.port}</span>
-                  <span>h{peer.height}</span>
-                </div>
-              ))}
-              {(peers?.peers ?? []).length === 0 && (
-                <div className="explorer-empty">No active peer announcements.</div>
               )}
             </div>
           </div>

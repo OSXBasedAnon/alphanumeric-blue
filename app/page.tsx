@@ -118,10 +118,26 @@ export default function Page() {
       <section className="flow-lite">
         <h2>How It Works</h2>
         <div className="flow-lite-row">
-          <div className="flow-lite-step"><strong>1.</strong> Nodes announce signed state.</div>
-          <div className="flow-lite-step"><strong>2.</strong> Clients discover and rank peers.</div>
-          <div className="flow-lite-step"><strong>3.</strong> Gateway tracks signed headers and pending quorum.</div>
-          <div className="flow-lite-step"><strong>4.</strong> Clients sync from canonical chain peers.</div>
+          <div className="flow-lite-step">
+            <span className="flow-lite-num">01</span>
+            <h3>Announce</h3>
+            <p>Nodes publish signed status and optional stats snapshots.</p>
+          </div>
+          <div className="flow-lite-step">
+            <span className="flow-lite-num">02</span>
+            <h3>Rank</h3>
+            <p>Gateway dedupes endpoints and prioritizes fresher peer signals.</p>
+          </div>
+          <div className="flow-lite-step">
+            <span className="flow-lite-num">03</span>
+            <h3>Verify</h3>
+            <p>Header snapshots move from pending to verified by signer quorum.</p>
+          </div>
+          <div className="flow-lite-step">
+            <span className="flow-lite-num">04</span>
+            <h3>Sync</h3>
+            <p>Clients sync from the canonical chain tip exposed by discovery APIs.</p>
+          </div>
         </div>
       </section>
     </main>
