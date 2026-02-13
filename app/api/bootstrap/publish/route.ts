@@ -106,7 +106,9 @@ export async function POST(request: Request) {
 
   let blob: { url: string };
   try {
-    blob = await put(pathname, body, { access: "public" });
+    // If the same height/tip is published twice (common during retries), avoid failing with
+    // "blob already exists" by always making the object key unique.
+    blob = await put(pathname, body, { access: "public", addRandomSuffix: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return jsonError(500, "blob_put_failed", { message: msg });
