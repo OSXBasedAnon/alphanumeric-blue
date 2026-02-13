@@ -505,6 +505,18 @@ html, body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  margin-top: 16px;
+}
+
+.ops-feed-grid .explorer-card,
+.ops-feed-grid .tx-card {
+  background: rgba(34, 22, 66, 0.42);
+  border-color: rgba(167, 126, 255, 0.35);
+  box-shadow: 0 14px 30px rgba(27, 14, 58, 0.35);
+}
+
+.ops-feed-grid .panel-title {
+  color: #ccb7ff;
 }
 
 .flow-lite {
