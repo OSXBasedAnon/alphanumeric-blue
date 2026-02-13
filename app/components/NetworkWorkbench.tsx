@@ -254,7 +254,7 @@ export default function NetworkWorkbench() {
                 <span>Difficulty</span>
                 <strong>{formatNumber(difficulty)}</strong>
               </div>
-              <div className="signal-item tone-cyan">
+              <div className="signal-item tone-amber">
                 <span>Hashrate</span>
                 <strong>{formatHashrate(hashrate)}</strong>
               </div>
@@ -283,8 +283,16 @@ export default function NetworkWorkbench() {
                 <strong>{freshPeers60s}</strong>
               </div>
               <div className="signal-item wide tone-violet">
+                <span>Verify Reason</span>
+                <strong>{snapshot?.verify_reason ?? "-"}</strong>
+              </div>
+              <div className="signal-item wide tone-violet">
                 <span>Tip Hash</span>
                 <strong>{shortHash(tipHeader?.hash)}</strong>
+              </div>
+              <div className="signal-item wide tone-violet">
+                <span>Prev Hash</span>
+                <strong>{shortHash(tipHeader?.prev_hash)}</strong>
               </div>
             </div>
           </div>
