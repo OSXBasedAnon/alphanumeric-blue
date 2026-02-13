@@ -400,6 +400,26 @@ html, body {
   grid-column: 1 / -1;
 }
 
+.signal-item.tone-cyan {
+  border-color: rgba(100, 201, 255, 0.35);
+  background: rgba(28, 58, 95, 0.35);
+}
+
+.signal-item.tone-green {
+  border-color: rgba(70, 242, 163, 0.35);
+  background: rgba(24, 69, 58, 0.32);
+}
+
+.signal-item.tone-amber {
+  border-color: rgba(255, 196, 122, 0.35);
+  background: rgba(89, 61, 28, 0.3);
+}
+
+.signal-item.tone-violet {
+  border-color: rgba(167, 126, 255, 0.35);
+  background: rgba(58, 34, 92, 0.35);
+}
+
 .ops-chart-title,
 .panel-title {
   font-size: 0.8rem;

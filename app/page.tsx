@@ -1,4 +1,5 @@
 import Image from "next/image";
+import ActivityFeed from "./components/ActivityFeed";
 import NetworkWorkbench from "./components/NetworkWorkbench";
 import StatusPanel from "./components/StatusPanel";
 
@@ -78,6 +79,7 @@ export default function Page() {
       </section>
 
       <NetworkWorkbench />
+      <ActivityFeed />
 
       <section className="download">
         <div className="download-card">

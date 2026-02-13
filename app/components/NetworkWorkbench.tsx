@@ -111,19 +111,6 @@ function formatSeconds(value: unknown): string {
   return `${hours}h`;
 }
 
-function coerceTxList(stats: any): Array<any> {
-  const candidates = [
-    stats?.latest_transactions,
-    stats?.transactions,
-    stats?.txs,
-    stats?.recent_transactions
-  ];
-  for (const candidate of candidates) {
-    if (Array.isArray(candidate)) return candidate;
-  }
-  return [];
-}
-
 export default function NetworkWorkbench() {
   const [snapshot, setSnapshot] = useState<ChainSnapshotResponse | null>(null);
   const [pending, setPending] = useState<PendingResponse | null>(null);
@@ -171,9 +158,7 @@ export default function NetworkWorkbench() {
   const difficulty = snapshot?.stats?.difficulty;
 
   const sourceHeaders = snapshot?.snapshot?.headers ?? topPending?.snapshot?.headers ?? [];
-  const headers = sourceHeaders.slice(-3).reverse();
-  const tipHeader = headers[0];
-  const transactions = coerceTxList(snapshot?.stats).slice(0, 3);
+  const tipHeader = sourceHeaders.at(-1);
   const verifyLabel = snapshot?.verify_state ?? (snapshot?.verified ? "verified" : "pending");
   const avgBlockIntervalSec = useMemo(() => {
     if (!Array.isArray(sourceHeaders) || sourceHeaders.length < 2) return null;
@@ -269,77 +254,38 @@ export default function NetworkWorkbench() {
                 <span>Difficulty</span>
                 <strong>{formatNumber(difficulty)}</strong>
               </div>
-              <div className="signal-item">
+              <div className="signal-item tone-cyan">
                 <span>Hashrate</span>
                 <strong>{formatHashrate(hashrate)}</strong>
               </div>
-              <div className="signal-item">
+              <div className="signal-item tone-amber">
                 <span>Tip Age</span>
                 <strong>{formatSeconds(tipAgeSeconds)}</strong>
               </div>
-              <div className="signal-item">
+              <div className="signal-item tone-cyan">
                 <span>Avg Block Interval</span>
                 <strong>{formatSeconds(avgBlockIntervalSec ?? NaN)}</strong>
               </div>
-              <div className="signal-item">
+              <div className="signal-item tone-violet">
                 <span>Pending Signers</span>
                 <strong>{pendingSigners}</strong>
               </div>
-              <div className="signal-item">
+              <div className="signal-item tone-violet">
                 <span>Competing Tips</span>
                 <strong>{Math.max(0, topHeightPendingVariants - 1)}</strong>
               </div>
-              <div className="signal-item">
+              <div className="signal-item tone-green">
                 <span>Height Agreement</span>
                 <strong>{agreementPeers}/{peerList.length}</strong>
               </div>
-              <div className="signal-item">
+              <div className="signal-item tone-green">
                 <span>Fresh Peers (60s)</span>
                 <strong>{freshPeers60s}</strong>
               </div>
-              <div className="signal-item wide">
+              <div className="signal-item wide tone-violet">
                 <span>Tip Hash</span>
                 <strong>{shortHash(tipHeader?.hash)}</strong>
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="ops-feed-shell">
-        <div className="ops-feed-grid">
-          <div className="explorer-card">
-            <div className="panel-title">Explorer</div>
-            <div className="explorer-list">
-              {headers.length > 0 ? (
-                headers.map((header) => (
-                  <div key={`${header.height}-${header.hash}`} className="explorer-row">
-                    <span className="explorer-height">#{header.height}</span>
-                    <span className="explorer-hash">{shortHash(header.hash)}</span>
-                    <span className="explorer-time">{formatAgo(header.timestamp)}</span>
-                  </div>
-                ))
-              ) : (
-                <div className="explorer-empty">No signed headers available yet.</div>
-              )}
-            </div>
-          </div>
-
-          <div className="tx-card">
-            <div className="panel-title">Latest Transactions</div>
-            <div className="tx-list">
-              {transactions.length > 0 ? (
-                transactions.map((tx, idx) => (
-                  <div key={idx} className="tx-row">
-                    <span className="tx-hash">{shortHash(String(tx?.hash ?? tx?.id ?? tx?.txid ?? ""))}</span>
-                    <span className="tx-amount">{formatNumber(tx?.amount ?? tx?.value ?? tx?.fee ?? "")}</span>
-                  </div>
-                ))
-              ) : (
-                <div className="explorer-empty">
-                  Transaction feed not provided by upstream stats yet.
-                </div>
-              )}
             </div>
           </div>
         </div>
