@@ -18,19 +18,31 @@ const LATEST_KEY = "bootstrap:latest";
 
 type AuthCheck = "ok" | "missing" | "mismatch";
 
+function normalizeToken(raw: string): string {
+  let t = raw.trim();
+  if (t.toLowerCase().startsWith("bearer ")) t = t.slice(7).trim();
+  // Tolerate accidental quoting in env var UIs.
+  if (
+    (t.startsWith('"') && t.endsWith('"') && t.length >= 2) ||
+    (t.startsWith("'") && t.endsWith("'") && t.length >= 2)
+  ) {
+    t = t.slice(1, -1).trim();
+  }
+  return t;
+}
+
 function checkAuth(req: Request): AuthCheck {
   const expectedRaw = process.env.BOOTSTRAP_PUBLISH_TOKEN;
-  const expected = expectedRaw?.trim();
+  const expected = expectedRaw ? normalizeToken(expectedRaw) : "";
   if (!expected) return "missing";
 
-  const got = (req.headers.get("authorization") ?? "").trim();
+  const gotHeader = req.headers.get("authorization") ?? "";
+  const got = normalizeToken(gotHeader);
 
   // Accept either:
   // - expected = "<token>", header = "Bearer <token>" (recommended)
   // - expected = "Bearer <token>", header = "Bearer <token>" (tolerate misconfigured env)
-  if (got === `Bearer ${expected}`) return "ok";
-  if (expected.toLowerCase().startsWith("bearer ")) return got === expected ? "ok" : "mismatch";
-  if (got === expected) return "ok";
+  if (got && got === expected) return "ok";
   return "mismatch";
 }
 
