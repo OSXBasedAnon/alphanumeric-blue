@@ -15,20 +15,31 @@ type BootstrapLatest = {
 
 const LATEST_KEY = "bootstrap:latest";
 
-function requireAuth(req: Request): boolean {
+type AuthCheck = "ok" | "missing" | "mismatch";
+
+function checkAuth(req: Request): AuthCheck {
   const expectedRaw = process.env.BOOTSTRAP_PUBLISH_TOKEN;
   const expected = expectedRaw?.trim();
-  if (!expected) return false;
+  if (!expected) return "missing";
 
   const got = (req.headers.get("authorization") ?? "").trim();
 
-  if (got === `Bearer ${expected}`) return true;
-  if (expected.toLowerCase().startsWith("bearer ")) return got === expected;
-  return got === expected;
+  if (got === `Bearer ${expected}`) return "ok";
+  if (expected.toLowerCase().startsWith("bearer ")) return got === expected ? "ok" : "mismatch";
+  if (got === expected) return "ok";
+  return "mismatch";
 }
 
 export async function POST(request: Request) {
-  if (!requireAuth(request)) {
+  const auth = checkAuth(request);
+  if (auth === "missing") {
+    return NextResponse.json(
+      { ok: false, error: "server_missing_publish_token" },
+      { status: 500, headers: { "cache-control": "no-store" } }
+    );
+  }
+
+  if (auth !== "ok") {
     return NextResponse.json(
       { ok: false, error: "unauthorized" },
       { status: 401, headers: { "cache-control": "no-store" } }
