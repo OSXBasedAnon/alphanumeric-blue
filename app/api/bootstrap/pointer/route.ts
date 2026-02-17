@@ -22,7 +22,7 @@ const TRUSTED_PUBLISHER_KEYS = new Set(
     .filter((k) => k.length > 0)
 );
 const REQUIRE_TRUSTED_PUBLISHER_KEYS =
-  (process.env.REQUIRE_TRUSTED_BOOTSTRAP_PUBLISHER_KEYS ?? "true").toLowerCase() !== "false";
+  (process.env.REQUIRE_TRUSTED_BOOTSTRAP_PUBLISHER_KEYS ?? "false").toLowerCase() === "true";
 
 type AuthCheck = "ok" | "missing" | "mismatch";
 
