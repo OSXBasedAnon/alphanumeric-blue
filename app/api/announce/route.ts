@@ -16,7 +16,7 @@ const TRUSTED_ANNOUNCE_KEYS = new Set(
     .map((k) => k.trim())
     .filter((k) => k.length > 0)
 );
-const REQUIRE_TRUSTED_KEYS = (process.env.REQUIRE_TRUSTED_ANNOUNCE_KEYS ?? "true").toLowerCase() !== "false";
+const REQUIRE_TRUSTED_KEYS = (process.env.REQUIRE_TRUSTED_ANNOUNCE_KEYS ?? "false").toLowerCase() === "true";
 
 function response(body: unknown, status = 200) {
   return NextResponse.json(body, {
