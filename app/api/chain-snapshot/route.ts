@@ -115,6 +115,36 @@ function resolveObservedAt(candidate: any | null | undefined): number {
   return 0;
 }
 
+function deriveAnnounceStats(peers: PeerRecord[], nowSec: number): any | null {
+  if (peers.length === 0) return null;
+
+  const fresh = peers
+    .filter((p) => Number.isFinite(p.last_seen) && p.last_seen > 0)
+    .filter((p) => Math.max(0, nowSec - p.last_seen) <= STATS_MAX_AGE_SECONDS);
+
+  if (fresh.length === 0) return null;
+
+  const best = fresh
+    .slice()
+    .sort((a, b) => {
+      const heightA = Number(a.height ?? 0);
+      const heightB = Number(b.height ?? 0);
+      if (heightB !== heightA) return heightB - heightA;
+      const seenA = Number(a.last_seen ?? 0);
+      const seenB = Number(b.last_seen ?? 0);
+      return seenB - seenA;
+    })[0];
+
+  return {
+    height: Number(best.height ?? 0),
+    difficulty: 0,
+    hashrate_ths: 0,
+    last_block_time: 0,
+    peers: fresh.length,
+    received_at: Number(best.last_seen ?? nowSec)
+  };
+}
+
 async function fetchStats(): Promise<any | null> {
   if (!STATS_API_URL) return null;
   try {
@@ -243,6 +273,7 @@ export async function GET() {
     ]);
     const dedupedPeers = dedupePeersByEndpoint(peers);
     const peerStats = await fetchPeerStats(dedupedPeers);
+    const announceStats = deriveAnnounceStats(dedupedPeers, nowSec);
     const peerCount = resolvePeerCount(dedupedPeers.length, stats, pushedStats, peerStats);
     const sortedPending = pending.sort((a, b) => {
       if (b.snapshot.height !== a.snapshot.height) return b.snapshot.height - a.snapshot.height;
@@ -259,7 +290,7 @@ export async function GET() {
     const networkCandidates = [
       { source: "indexer" as const, stats },
       { source: "push" as const, stats: pushedStats },
-      { source: "peer" as const, stats: peerStats }
+      { source: "peer" as const, stats: peerStats ?? announceStats }
     ]
       .filter((c) => c.stats && !isTooFarBehindSigned(c.stats))
       .filter((c) => {
