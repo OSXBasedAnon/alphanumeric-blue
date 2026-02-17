@@ -16,8 +16,8 @@ const PEER_STATS_ENABLED = (process.env.PEER_STATS_ENABLED ?? "true").toLowerCas
 const PEER_STATS_TIMEOUT_MS = Number(process.env.PEER_STATS_TIMEOUT_MS ?? 1500);
 const PEER_STATS_PORT_DEFAULT = Number(process.env.PEER_STATS_PORT_DEFAULT ?? 8787);
 const PEER_STATS_MAX_LAG = Number(process.env.PEER_STATS_MAX_LAG ?? 50);
-const PEER_STATS_MAX_ATTEMPTS = Number(process.env.PEER_STATS_MAX_ATTEMPTS ?? 8);
-const PEER_STATS_MAX_SUCCESSES = Number(process.env.PEER_STATS_MAX_SUCCESSES ?? 4);
+const PEER_STATS_MAX_ATTEMPTS = Number(process.env.PEER_STATS_MAX_ATTEMPTS ?? 4);
+const PEER_STATS_MAX_SUCCESSES = Number(process.env.PEER_STATS_MAX_SUCCESSES ?? 2);
 const PEER_STATS_ALLOW_PRIVATE = (process.env.PEER_STATS_ALLOW_PRIVATE ?? "false").toLowerCase() === "true";
 const PUSH_STATS_ENABLED = (process.env.PUSH_STATS_ENABLED ?? "true").toLowerCase() !== "false";
 const PUSH_STATS_MAX_LAG = Number(process.env.PUSH_STATS_MAX_LAG ?? 50);
@@ -25,7 +25,7 @@ const SIGNED_SNAPSHOT_MAX_LAG = Number(process.env.SIGNED_SNAPSHOT_MAX_LAG ?? 2)
 const STATS_MAX_AGE_SECONDS = Number(process.env.STATS_MAX_AGE_SECONDS ?? 600);
 const SOURCE_STICKY_SECONDS = Number(process.env.SOURCE_STICKY_SECONDS ?? 6);
 const SOURCE_SWITCH_MIN_HEIGHT_DELTA = Number(process.env.SOURCE_SWITCH_MIN_HEIGHT_DELTA ?? 2);
-const CHAIN_SNAPSHOT_CACHE_MS = Number(process.env.CHAIN_SNAPSHOT_CACHE_MS ?? 750);
+const CHAIN_SNAPSHOT_CACHE_MS = Number(process.env.CHAIN_SNAPSHOT_CACHE_MS ?? 3000);
 
 function isPrivateIp(ip: string): boolean {
   const parts = ip.split(".");

@@ -124,7 +124,7 @@ export default function NetworkWorkbench() {
         fetch("/api/chain-snapshot", { cache: "no-store" }).then((res) => res.json()),
         fetch("/api/pending-snapshots", { cache: "no-store" }).then((res) => res.json()),
         fetch("/api/snapshot-history", { cache: "no-store" }).then((res) => res.json()),
-        fetch("/api/peers?limit=64", { cache: "no-store" }).then((res) => res.json())
+        fetch("/api/peers?limit=32", { cache: "no-store" }).then((res) => res.json())
       ])
         .then(([chainJson, pendingJson, historyJson, peersJson]) => {
           if (cancelled) return;
@@ -136,7 +136,7 @@ export default function NetworkWorkbench() {
         .catch(() => null);
 
     load();
-    const interval = setInterval(load, 3000);
+    const interval = setInterval(load, 12000);
     return () => {
       cancelled = true;
       clearInterval(interval);

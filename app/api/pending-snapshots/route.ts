@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { listPendingSnapshots } from "@/lib/storage";
 
 function response(body: unknown, status = 200) {
@@ -11,9 +11,11 @@ function response(body: unknown, status = 200) {
   });
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const url = new URL(req.url);
+  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 20)));
   const pending = await listPendingSnapshots();
-  const sorted = pending.sort((a, b) => b.snapshot.height - a.snapshot.height).slice(0, 20);
+  const sorted = pending.sort((a, b) => b.snapshot.height - a.snapshot.height).slice(0, limit);
   return response({ ok: true, count: sorted.length, pending: sorted });
 }
 

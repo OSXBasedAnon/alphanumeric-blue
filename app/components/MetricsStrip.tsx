@@ -34,7 +34,7 @@ export default function MetricsStrip() {
         .catch(() => null);
 
     load();
-    const interval = setInterval(load, 10000);
+    const interval = setInterval(load, 30000);
     return () => {
       cancelled = true;
       clearInterval(interval);

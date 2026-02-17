@@ -22,11 +22,14 @@ const TRUSTED_KEYS = new Set(
     .filter((k) => k.length > 0)
 );
 const REQUIRED_QUORUM = Number(process.env.SNAPSHOT_QUORUM ?? 2);
+const MIN_REQUIRED_QUORUM = Math.max(2, Number(process.env.SNAPSHOT_MIN_QUORUM ?? 2));
 const EXPECTED_NETWORK_ID = process.env.EXPECTED_NETWORK_ID ?? "";
-const QUORUM_FALLBACK = (process.env.SNAPSHOT_QUORUM_FALLBACK ?? "true").toLowerCase() !== "false";
 const BOOTSTRAP_QUORUM_THRESHOLD = Number(process.env.BOOTSTRAP_QUORUM_THRESHOLD ?? 2);
 const BOOTSTRAP_QUORUM = Number(process.env.BOOTSTRAP_QUORUM ?? 1);
 const BOOTSTRAP_PENDING_WINDOW = Number(process.env.BOOTSTRAP_PENDING_WINDOW ?? 900);
+const REQUIRE_TRUSTED_KEYS = (process.env.REQUIRE_TRUSTED_HEADER_KEYS ?? "true").toLowerCase() !== "false";
+const ALLOW_SINGLE_SIGNER_BOOTSTRAP =
+  (process.env.ALLOW_SINGLE_SIGNER_BOOTSTRAP ?? "false").toLowerCase() === "true";
 
 function response(body: unknown, status = 200) {
   return NextResponse.json(body, {
@@ -55,6 +58,10 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  if (REQUIRE_TRUSTED_KEYS && TRUSTED_KEYS.size === 0) {
+    return response({ ok: false, error: "server_missing_trusted_header_keys" }, 500);
+  }
+
   const ip = getClientIp(req);
   const allowed = await rateLimitScoped("headers_ip", ip, RATE_LIMIT, RATE_WINDOW);
   if (!allowed) return response({ ok: false, error: "rate_limited" }, 429);
@@ -100,7 +107,7 @@ export async function POST(req: NextRequest) {
     public_key: String(payload.public_key)
   });
 
-  if (TRUSTED_KEYS.size > 0 && !TRUSTED_KEYS.has(String(payload.public_key))) {
+  if ((REQUIRE_TRUSTED_KEYS || TRUSTED_KEYS.size > 0) && !TRUSTED_KEYS.has(String(payload.public_key))) {
     return response({ ok: false, error: "untrusted_key" }, 403);
   }
 
@@ -138,14 +145,12 @@ export async function POST(req: NextRequest) {
     String(payload.public_key),
     pendingTtl
   );
-  const trustedSigners = TRUSTED_KEYS.size === 0
-    ? pending.signers
-    : pending.signers.filter((k) => TRUSTED_KEYS.has(k));
-  const baseQuorum =
-    QUORUM_FALLBACK && TRUSTED_KEYS.size > 0 && TRUSTED_KEYS.size < REQUIRED_QUORUM
-      ? TRUSTED_KEYS.size
-      : REQUIRED_QUORUM;
-  const effectiveQuorum = bootstrapMode ? Math.min(BOOTSTRAP_QUORUM, baseQuorum) : baseQuorum;
+  const trustedSigners = pending.signers.filter((k) => TRUSTED_KEYS.has(k));
+  const baseQuorum = Math.max(REQUIRED_QUORUM, MIN_REQUIRED_QUORUM);
+  const bootstrapQuorum = ALLOW_SINGLE_SIGNER_BOOTSTRAP
+    ? Math.max(1, BOOTSTRAP_QUORUM)
+    : Math.max(2, BOOTSTRAP_QUORUM);
+  const effectiveQuorum = bootstrapMode ? bootstrapQuorum : baseQuorum;
   const quorumReached = trustedSigners.length >= effectiveQuorum;
 
   if (quorumReached) {

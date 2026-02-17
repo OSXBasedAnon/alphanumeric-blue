@@ -14,6 +14,7 @@ const TRUSTED_STATS_KEYS = new Set(
     .map((k) => k.trim())
     .filter((k) => k.length > 0)
 );
+const REQUIRE_TRUSTED_KEYS = (process.env.REQUIRE_TRUSTED_STATS_KEYS ?? "true").toLowerCase() !== "false";
 
 function response(body: unknown, status = 200) {
   return NextResponse.json(body, {
@@ -37,6 +38,10 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
+  if (REQUIRE_TRUSTED_KEYS && TRUSTED_STATS_KEYS.size === 0) {
+    return response({ ok: false, error: "server_missing_trusted_stats_keys" }, 500);
+  }
+
   const ip = getClientIp(req);
   const allowed = await rateLimitScoped("stats_ip", ip, RATE_LIMIT, RATE_WINDOW);
   if (!allowed) return response({ ok: false, error: "rate_limited" }, 429);
@@ -86,7 +91,7 @@ export async function POST(req: NextRequest) {
     uptime_secs: Number(payload.uptime_secs)
   });
 
-  if (TRUSTED_STATS_KEYS.size > 0 && !TRUSTED_STATS_KEYS.has(String(payload.public_key))) {
+  if ((REQUIRE_TRUSTED_KEYS || TRUSTED_STATS_KEYS.size > 0) && !TRUSTED_STATS_KEYS.has(String(payload.public_key))) {
     return response({ ok: false, error: "untrusted_key" }, 403);
   }
 

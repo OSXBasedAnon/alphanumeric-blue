@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { listSnapshotHistory } from "@/lib/storage";
 
 function response(body: unknown, status = 200) {
@@ -11,9 +11,12 @@ function response(body: unknown, status = 200) {
   });
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const url = new URL(req.url);
+  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 48)));
   const history = await listSnapshotHistory();
-  return response({ ok: true, count: history.length, history });
+  const trimmed = history.slice(0, limit);
+  return response({ ok: true, count: trimmed.length, history: trimmed });
 }
 
 export async function OPTIONS() {

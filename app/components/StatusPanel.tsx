@@ -15,33 +15,23 @@ type SnapshotResponse = {
   stale?: boolean;
   verified?: boolean;
   last_updated?: number;
-};
-
-type PendingResponse = {
-  ok: boolean;
-  count: number;
-  pending: Array<{
-    snapshot: { height: number };
-    signers: string[];
-  }>;
+  diagnostics?: {
+    has_pending?: boolean;
+  };
 };
 
 export default function StatusPanel() {
   const [data, setData] = useState<SnapshotResponse | null>(null);
-  const [pending, setPending] = useState<PendingResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const load = () =>
-      Promise.all([
-        fetch("/api/chain-snapshot", { cache: "no-store" }).then((res) => res.json()),
-        fetch("/api/pending-snapshots", { cache: "no-store" }).then((res) => res.json())
-      ])
-        .then(([snapshotJson, pendingJson]) => {
+      fetch("/api/chain-snapshot", { cache: "no-store" })
+        .then((res) => res.json())
+        .then((snapshotJson) => {
           if (!cancelled) {
             setData(snapshotJson);
-            setPending(pendingJson);
             setError(null);
           }
         })
@@ -50,7 +40,7 @@ export default function StatusPanel() {
         });
 
     load();
-    const interval = setInterval(load, 3000);
+    const interval = setInterval(load, 15000);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -70,7 +60,7 @@ export default function StatusPanel() {
       <div className="panel-row">
         <span className="label">Height</span>
         <span className="value">
-          {data?.stats?.height ?? data?.snapshot?.height ?? pending?.pending?.[0]?.snapshot.height ?? "-"}
+          {data?.stats?.height ?? data?.snapshot?.height ?? "-"}
         </span>
       </div>
       <div className="panel-row">
@@ -82,7 +72,7 @@ export default function StatusPanel() {
       <div className="panel-row">
         <span className="label">Pending</span>
         <span className="value">
-          {pending?.count ?? 0} ({pending?.pending?.[0]?.snapshot.height ?? "-"})
+          {data?.diagnostics?.has_pending ? "yes" : "no"}
         </span>
       </div>
       <div className="panel-row">

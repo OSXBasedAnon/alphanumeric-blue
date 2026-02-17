@@ -60,6 +60,10 @@ const HISTORY_LIMIT = Number(process.env.SNAPSHOT_HISTORY_LIMIT ?? 48);
 const STATS_TTL_SECONDS = Number(process.env.STATS_TTL_SECONDS ?? 600);
 const STATS_LATEST_TTL_SECONDS = Number(process.env.STATS_LATEST_TTL_SECONDS ?? STATS_TTL_SECONDS * 2);
 const PENDING_TTL_SECONDS = Number(process.env.PENDING_TTL_SECONDS ?? QUORUM_WINDOW_SECONDS);
+const KV_INDEX_SCAN_LIMIT = Number(process.env.KV_INDEX_SCAN_LIMIT ?? 2000);
+const KV_PENDING_SCAN_LIMIT = Number(process.env.KV_PENDING_SCAN_LIMIT ?? 1000);
+const KV_HISTORY_SCAN_LIMIT = Number(process.env.KV_HISTORY_SCAN_LIMIT ?? 1000);
+const KV_STATS_SCAN_LIMIT = Number(process.env.KV_STATS_SCAN_LIMIT ?? 1000);
 
 const memoryPeers = new Map<string, PeerRecord>();
 let memorySnapshot: HeaderSnapshot | null = null;
@@ -142,7 +146,7 @@ export async function listPeers(): Promise<PeerRecord[]> {
     }));
   }
 
-  const keys = (await kv.smembers(peerIndexKey())) as string[];
+  const keys = ((await kv.smembers(peerIndexKey())) as string[]).slice(0, KV_INDEX_SCAN_LIMIT);
   if (!keys || keys.length === 0) return [];
 
   const peers = (await kv.mget(...keys)) as Array<PeerRecord | null>;
@@ -259,10 +263,14 @@ export async function listPendingSnapshots(): Promise<PendingSnapshot[]> {
     return Array.from(memoryPending.values());
   }
 
-  const keys = (await kv.smembers(pendingIndexKey())) as string[];
+  const keys = ((await kv.smembers(pendingIndexKey())) as string[]).slice(0, KV_PENDING_SCAN_LIMIT);
   if (!keys || keys.length === 0) return [];
 
   const pending = (await kv.mget(...keys)) as Array<PendingSnapshot | null>;
+  const staleKeys = keys.filter((_, idx) => !pending[idx]);
+  if (staleKeys.length > 0) {
+    await kv.srem(pendingIndexKey(), ...staleKeys);
+  }
   return pending.filter(Boolean) as PendingSnapshot[];
 }
 
@@ -271,10 +279,14 @@ export async function listSnapshotHistory(): Promise<HeaderSnapshot[]> {
     return memoryHistory.slice(0, HISTORY_LIMIT);
   }
 
-  const keys = (await kv.smembers(historyIndexKey())) as string[];
+  const keys = ((await kv.smembers(historyIndexKey())) as string[]).slice(0, KV_HISTORY_SCAN_LIMIT);
   if (!keys || keys.length === 0) return [];
 
   const snapshots = (await kv.mget(...keys)) as Array<HeaderSnapshot | null>;
+  const staleKeys = keys.filter((_, idx) => !snapshots[idx]);
+  if (staleKeys.length > 0) {
+    await kv.srem(historyIndexKey(), ...staleKeys);
+  }
   const filtered = snapshots.filter(Boolean) as HeaderSnapshot[];
   filtered.sort((a, b) => b.received_at - a.received_at);
   return filtered.slice(0, HISTORY_LIMIT);
@@ -299,7 +311,7 @@ export async function listStatsSnapshots(): Promise<StatsSnapshot[]> {
     return Array.from(memoryStats.values());
   }
 
-  const keys = (await kv.smembers(statsIndexKey())) as string[];
+  const keys = ((await kv.smembers(statsIndexKey())) as string[]).slice(0, KV_STATS_SCAN_LIMIT);
   if (!keys || keys.length === 0) return [];
 
   const stats = (await kv.mget(...keys)) as Array<StatsSnapshot | null>;

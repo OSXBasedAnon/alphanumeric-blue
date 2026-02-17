@@ -1,6 +1,8 @@
 import Image from "next/image";
 import ActivityFeed from "./components/ActivityFeed";
+import MetricsStrip from "./components/MetricsStrip";
 import NetworkWorkbench from "./components/NetworkWorkbench";
+import SnapshotHistory from "./components/SnapshotHistory";
 import StatusPanel from "./components/StatusPanel";
 
 export default function Page() {
@@ -51,7 +53,9 @@ export default function Page() {
       </section>
 
       <NetworkWorkbench />
+      <MetricsStrip />
       <ActivityFeed />
+      <SnapshotHistory />
 
       <section className="flow-lite">
         <h2>How It Works</h2>

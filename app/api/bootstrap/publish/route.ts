@@ -15,6 +15,7 @@ type BootstrapLatest = {
 };
 
 const LATEST_KEY = "bootstrap:latest";
+const MAX_BOOTSTRAP_BYTES = Number(process.env.MAX_BOOTSTRAP_BYTES ?? 512 * 1024 * 1024);
 
 type AuthCheck = "ok" | "missing" | "mismatch";
 
@@ -80,8 +81,6 @@ export async function POST(request: Request) {
   const heightRaw = url.searchParams.get("height") ?? undefined;
   const tipHash = url.searchParams.get("tip") ?? undefined;
   const sha256 = url.searchParams.get("sha256") ?? undefined;
-  const publisherPubkey = url.searchParams.get("publisher_pubkey") ?? undefined;
-  const manifestSig = url.searchParams.get("manifest_sig") ?? undefined;
   const updatedAtRaw = url.searchParams.get("updated_at") ?? undefined;
 
   const body = await request.arrayBuffer();
@@ -89,6 +88,12 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { ok: false, error: "empty_body" },
       { status: 400, headers: { "cache-control": "no-store" } }
+    );
+  }
+  if (body.byteLength > MAX_BOOTSTRAP_BYTES) {
+    return NextResponse.json(
+      { ok: false, error: "payload_too_large" },
+      { status: 413, headers: { "cache-control": "no-store" } }
     );
   }
 
@@ -119,8 +124,8 @@ export async function POST(request: Request) {
     height,
     tip_hash: tipHash,
     sha256,
-    publisher_pubkey: publisherPubkey,
-    manifest_sig: manifestSig,
+    publisher_pubkey: undefined,
+    manifest_sig: undefined,
     updated_at: updatedAtRaw ? Number(updatedAtRaw) : Math.floor(Date.now() / 1000)
   };
 

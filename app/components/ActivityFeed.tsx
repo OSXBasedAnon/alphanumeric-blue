@@ -15,20 +15,6 @@ type ChainSnapshotResponse = {
   } | null;
 };
 
-type PendingResponse = {
-  ok: boolean;
-  pending: Array<{
-    snapshot: {
-      headers?: Array<{
-        height: number;
-        hash: string;
-        prev_hash: string;
-        timestamp: number;
-      }>;
-    };
-  }>;
-};
-
 function formatAgo(ts?: number): string {
   if (!ts || ts <= 0) return "-";
   const now = Math.floor(Date.now() / 1000);
@@ -66,31 +52,27 @@ function coerceTxList(stats: any): Array<any> {
 
 export default function ActivityFeed() {
   const [snapshot, setSnapshot] = useState<ChainSnapshotResponse | null>(null);
-  const [pending, setPending] = useState<PendingResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const load = () =>
-      Promise.all([
-        fetch("/api/chain-snapshot", { cache: "no-store" }).then((res) => res.json()),
-        fetch("/api/pending-snapshots", { cache: "no-store" }).then((res) => res.json())
-      ])
-        .then(([chainJson, pendingJson]) => {
+      fetch("/api/chain-snapshot", { cache: "no-store" })
+        .then((res) => res.json())
+        .then((chainJson) => {
           if (cancelled) return;
           setSnapshot(chainJson);
-          setPending(pendingJson);
         })
         .catch(() => null);
 
     load();
-    const interval = setInterval(load, 3000);
+    const interval = setInterval(load, 15000);
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
   }, []);
 
-  const sourceHeaders = snapshot?.snapshot?.headers ?? pending?.pending?.[0]?.snapshot?.headers ?? [];
+  const sourceHeaders = snapshot?.snapshot?.headers ?? [];
   const headers = sourceHeaders.slice(-3).reverse();
   const transactions = coerceTxList(snapshot?.stats).slice(0, 3);
 
