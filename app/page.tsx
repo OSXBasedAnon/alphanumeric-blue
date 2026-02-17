@@ -21,7 +21,7 @@ export default function Page() {
           <p>
             A resilient discovery and light snapshot layer for the Alphanumeric network.
             Nodes announce, clients discover peers, and the gateway stays available so
-            clients can reconnect and sync quickly at any time.
+            clients can reconnect and sync.
           </p>
           <div className="cta-row">
             <a className="cta" href="/api/peers">Discovery API</a>
