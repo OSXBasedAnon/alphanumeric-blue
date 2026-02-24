@@ -15,7 +15,7 @@ import {
 const MAX_SKEW_SECONDS = Number(process.env.MAX_SKEW_SECONDS ?? 600);
 const RATE_LIMIT = Number(process.env.HEADERS_RL_LIMIT ?? 10);
 const RATE_WINDOW = Number(process.env.HEADERS_RL_WINDOW ?? 60);
-const MAX_BODY_BYTES = Number(process.env.HEADERS_MAX_BODY_BYTES ?? 512 * 1024);
+const MAX_BODY_BYTES = Number(process.env.HEADERS_MAX_BODY_BYTES ?? 128 * 1024);
 const TRUSTED_KEYS = new Set(
   (process.env.TRUSTED_HEADER_KEYS ?? "")
     .split(",")
