@@ -57,10 +57,12 @@ function checkAuth(req: Request): AuthCheck {
 export async function POST(request: Request) {
   const auth = checkAuth(request);
   if (auth === "missing") {
+    console.error(JSON.stringify({ event: "bootstrap_publish_missing_server_token" }));
     return jsonError(500, "server_missing_publish_token");
   }
 
   if (auth !== "ok") {
+    console.warn(JSON.stringify({ event: "bootstrap_publish_unauthorized" }));
     return jsonError(401, "unauthorized");
   }
 

@@ -18,7 +18,14 @@ const PEER_STATS_PORT_DEFAULT = Number(process.env.PEER_STATS_PORT_DEFAULT ?? 87
 const PEER_STATS_MAX_LAG = Number(process.env.PEER_STATS_MAX_LAG ?? 50);
 const PEER_STATS_MAX_ATTEMPTS = Number(process.env.PEER_STATS_MAX_ATTEMPTS ?? 4);
 const PEER_STATS_MAX_SUCCESSES = Number(process.env.PEER_STATS_MAX_SUCCESSES ?? 2);
+const PEER_STATS_MAX_CONCURRENCY = Number(process.env.PEER_STATS_MAX_CONCURRENCY ?? 2);
 const PEER_STATS_ALLOW_PRIVATE = (process.env.PEER_STATS_ALLOW_PRIVATE ?? "false").toLowerCase() === "true";
+const PEER_STATS_DENYLIST = new Set(
+  (process.env.PEER_STATS_DENYLIST ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0)
+);
 const PUSH_STATS_ENABLED = (process.env.PUSH_STATS_ENABLED ?? "true").toLowerCase() !== "false";
 const PUSH_STATS_MAX_LAG = Number(process.env.PUSH_STATS_MAX_LAG ?? 50);
 const SIGNED_SNAPSHOT_MAX_LAG = Number(process.env.SIGNED_SNAPSHOT_MAX_LAG ?? 2);
@@ -58,10 +65,28 @@ function isForbiddenPublicProbeTarget(ip: string): boolean {
   // RFC 6890 special-use ranges (non-routable or sensitive).
   if (a === 0) return true;
   if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
-  if (a === 192 && b === 0) return true; // 192.0.0.0/24
   if (a === 192 && b === 88) return true; // 192.88.99.0/24 6to4 relay anycast
   if (a === 198 && (b === 18 || b === 19)) return true; // benchmark nets
+  if (a === 192 && b === 0) return true; // includes TEST-NET-1
+  if (a === 198 && b === 51) return true; // TEST-NET-2
+  if (a === 203 && b === 0) return true; // TEST-NET-3
   if (a >= 224) return true; // multicast and reserved
+  return false;
+}
+
+function isDeniedProbeTarget(ip: string): boolean {
+  if (PEER_STATS_DENYLIST.has(ip)) return true;
+  const parts = ip.split(".");
+  if (parts.length !== 4) return false;
+  const octets = parts.map((p) => Number(p));
+  if (octets.some((n) => Number.isNaN(n))) return false;
+
+  for (const item of PEER_STATS_DENYLIST) {
+    // Allow lightweight prefix entries like "203.0.113." for operational denylisting.
+    if (item.endsWith(".") && ip.startsWith(item)) {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -170,14 +195,14 @@ async function fetchPeerStats(peers: PeerRecord[]): Promise<any | null> {
   const sorted = peers
     .filter((p) => p.ip && p.ip !== "0.0.0.0")
     .filter((p) => !isForbiddenPublicProbeTarget(p.ip))
+    .filter((p) => !isDeniedProbeTarget(p.ip))
     .filter((p) => PEER_STATS_ALLOW_PRIVATE || !isPrivateIp(p.ip))
     .filter((p) => (p.height ?? 0) >= minHeight)
     .sort((a, b) => scorePeer(b, nowSec) - scorePeer(a, nowSec))
     .slice(0, Math.max(6, PEER_STATS_MAX_ATTEMPTS));
 
-  const selected = sorted.slice(0, PEER_STATS_MAX_ATTEMPTS);
-  const probeResults = await Promise.allSettled(
-    selected.map(async (peer) => {
+  const selected = sorted.slice(0, Math.max(1, PEER_STATS_MAX_ATTEMPTS));
+  const probePeer = async (peer: PeerRecord): Promise<any | null> => {
       const port = peer.stats_port ?? PEER_STATS_PORT_DEFAULT;
       if (!Number.isFinite(port) || port <= 0 || port > 65535) return null;
 
@@ -193,12 +218,36 @@ async function fetchPeerStats(peers: PeerRecord[]): Promise<any | null> {
       } finally {
         clearTimeout(timeout);
       }
-    })
-  );
+  };
+
+  const probeResults: Array<any | null> = [];
+  const inFlight: Array<Promise<void>> = [];
+  const maxConcurrency = Math.max(1, PEER_STATS_MAX_CONCURRENCY);
+  let cursor = 0;
+
+  while (cursor < selected.length || inFlight.length > 0) {
+    while (cursor < selected.length && inFlight.length < maxConcurrency) {
+      const peer = selected[cursor];
+      cursor += 1;
+      const task = probePeer(peer)
+        .then((value) => {
+          probeResults.push(value);
+        })
+        .catch(() => {
+          probeResults.push(null);
+        })
+        .finally(() => {
+          const idx = inFlight.indexOf(task);
+          if (idx >= 0) inFlight.splice(idx, 1);
+        });
+      inFlight.push(task);
+    }
+    if (inFlight.length > 0) {
+      await Promise.race(inFlight);
+    }
+  }
 
   const successes = probeResults
-    .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled")
-    .map((r) => r.value)
     .filter(Boolean)
     .slice(0, PEER_STATS_MAX_SUCCESSES);
 

@@ -59,10 +59,12 @@ function checkAuth(req: Request): AuthCheck {
 export async function POST(request: Request) {
   const auth = checkAuth(request);
   if (auth === "missing") {
+    console.error(JSON.stringify({ event: "bootstrap_pointer_missing_server_token" }));
     return jsonError(500, "server_missing_publish_token");
   }
 
   if (auth !== "ok") {
+    console.warn(JSON.stringify({ event: "bootstrap_pointer_unauthorized" }));
     return jsonError(401, "unauthorized");
   }
 
@@ -97,6 +99,7 @@ export async function POST(request: Request) {
   }
   const publisherKey = input.publisher_pubkey.trim().toLowerCase();
   if ((REQUIRE_TRUSTED_PUBLISHER_KEYS || TRUSTED_PUBLISHER_KEYS.size > 0) && !TRUSTED_PUBLISHER_KEYS.has(publisherKey)) {
+    console.warn(JSON.stringify({ event: "bootstrap_pointer_untrusted_publisher", publisher_pubkey: publisherKey }));
     return jsonError(403, "untrusted_publisher_pubkey");
   }
 
@@ -129,6 +132,7 @@ export async function POST(request: Request) {
   }
   const validSig = nacl.sign.detached.verify(msg, sig, pub);
   if (!validSig) {
+    console.warn(JSON.stringify({ event: "bootstrap_pointer_bad_manifest_signature", publisher_pubkey: publisherKey }));
     return jsonError(401, "invalid_manifest_signature");
   }
 

@@ -8,6 +8,7 @@ import { saveStatsSnapshot, type StatsSnapshot } from "@/lib/storage";
 const MAX_SKEW_SECONDS = Number(process.env.MAX_SKEW_SECONDS ?? 600);
 const RATE_LIMIT = Number(process.env.STATS_RL_LIMIT ?? 10);
 const RATE_WINDOW = Number(process.env.STATS_RL_WINDOW ?? 60);
+const MAX_BODY_BYTES = Number(process.env.STATS_MAX_BODY_BYTES ?? 64 * 1024);
 const TRUSTED_STATS_KEYS = new Set(
   (process.env.TRUSTED_STATS_KEYS ?? "")
     .split(",")
@@ -44,11 +45,18 @@ export async function POST(req: NextRequest) {
 
   const ip = getClientIp(req);
   const allowed = await rateLimitScoped("stats_ip", ip, RATE_LIMIT, RATE_WINDOW);
-  if (!allowed) return response({ ok: false, error: "rate_limited" }, 429);
+  if (!allowed) {
+    console.warn(JSON.stringify({ event: "stats_rate_limited", ip }));
+    return response({ ok: false, error: "rate_limited" }, 429);
+  }
 
   let payload: any;
   try {
-    payload = await req.json();
+    const raw = await req.text();
+    if (Buffer.byteLength(raw, "utf8") > MAX_BODY_BYTES) {
+      return response({ ok: false, error: "payload_too_large" }, 413);
+    }
+    payload = JSON.parse(raw);
   } catch {
     return response({ ok: false, error: "invalid_json" }, 400);
   }
@@ -92,11 +100,15 @@ export async function POST(req: NextRequest) {
   });
 
   if ((REQUIRE_TRUSTED_KEYS || TRUSTED_STATS_KEYS.size > 0) && !TRUSTED_STATS_KEYS.has(String(payload.public_key))) {
+    console.warn(JSON.stringify({ event: "stats_untrusted_key", ip, node_id: String(payload.node_id ?? "") }));
     return response({ ok: false, error: "untrusted_key" }, 403);
   }
 
   const valid = verifyEd25519(message, String(payload.signature), String(payload.public_key));
-  if (!valid) return response({ ok: false, error: "bad_signature" }, 401);
+  if (!valid) {
+    console.warn(JSON.stringify({ event: "stats_bad_signature", ip, node_id: String(payload.node_id ?? "") }));
+    return response({ ok: false, error: "bad_signature" }, 401);
+  }
 
   const snapshot: StatsSnapshot = {
     node_id: String(payload.node_id),

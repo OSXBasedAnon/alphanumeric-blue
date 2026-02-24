@@ -10,6 +10,7 @@ const RATE_LIMIT = Number(process.env.ANNOUNCE_RL_LIMIT ?? 10);
 const RATE_WINDOW = Number(process.env.ANNOUNCE_RL_WINDOW ?? 60);
 const SUBNET_LIMIT = Number(process.env.ANNOUNCE_SUBNET_RL_LIMIT ?? 30);
 const SUBNET_WINDOW = Number(process.env.ANNOUNCE_SUBNET_RL_WINDOW ?? 60);
+const MAX_BODY_BYTES = Number(process.env.ANNOUNCE_MAX_BODY_BYTES ?? 32 * 1024);
 const TRUSTED_ANNOUNCE_KEYS = new Set(
   (process.env.TRUSTED_ANNOUNCE_KEYS ?? "")
     .split(",")
@@ -46,16 +47,26 @@ export async function POST(req: NextRequest) {
 
   const ip = getClientIp(req);
   const allowed = await rateLimitScoped("announce_ip", ip, RATE_LIMIT, RATE_WINDOW);
-  if (!allowed) return response({ ok: false, error: "rate_limited" }, 429);
+  if (!allowed) {
+    console.warn(JSON.stringify({ event: "announce_rate_limited", ip }));
+    return response({ ok: false, error: "rate_limited" }, 429);
+  }
   const subnet = subnetKey(ip);
   if (subnet) {
     const subnetAllowed = await rateLimitScoped("announce_subnet", subnet, SUBNET_LIMIT, SUBNET_WINDOW);
-    if (!subnetAllowed) return response({ ok: false, error: "subnet_rate_limited" }, 429);
+    if (!subnetAllowed) {
+      console.warn(JSON.stringify({ event: "announce_subnet_rate_limited", ip, subnet }));
+      return response({ ok: false, error: "subnet_rate_limited" }, 429);
+    }
   }
 
   let payload: any;
   try {
-    payload = await req.json();
+    const raw = await req.text();
+    if (Buffer.byteLength(raw, "utf8") > MAX_BODY_BYTES) {
+      return response({ ok: false, error: "payload_too_large" }, 413);
+    }
+    payload = JSON.parse(raw);
   } catch {
     return response({ ok: false, error: "invalid_json" }, 400);
   }
@@ -75,7 +86,9 @@ export async function POST(req: NextRequest) {
   const payloadIp = typeof payload.ip === "string" ? payload.ip.trim() : "";
   const canOverrideIp = TRUSTED_ANNOUNCE_KEYS.has(String(payload.public_key));
   const recordIp = canOverrideIp && payloadIp.trim().length > 0 ? payloadIp : ip;
-  const statsPort = payload.stats_port === undefined ? undefined : Number(payload.stats_port);
+  const statsPortRaw = payload.stats_port;
+  const hasStatsPort = statsPortRaw !== undefined && statsPortRaw !== null;
+  const statsPort = hasStatsPort ? Number(statsPortRaw) : undefined;
   const messageIp = payloadIp.length > 0 ? payloadIp : "";
   const message = canonicalize({
     // Keep signature verification aligned with node canonical payload.
@@ -87,13 +100,17 @@ export async function POST(req: NextRequest) {
     height: Number(payload.height),
     last_seen: Number(payload.last_seen),
     latency_ms: payload.latency_ms === undefined ? undefined : Number(payload.latency_ms),
-    stats_port: payload.stats_port === undefined ? undefined : statsPort
+    stats_port: hasStatsPort ? statsPort : undefined
   });
 
   const valid = verifyEd25519(message, String(payload.signature), String(payload.public_key));
-  if (!valid) return response({ ok: false, error: "bad_signature" }, 401);
+  if (!valid) {
+    console.warn(JSON.stringify({ event: "announce_bad_signature", ip, node_id: String(payload.node_id ?? "") }));
+    return response({ ok: false, error: "bad_signature" }, 401);
+  }
 
   if ((REQUIRE_TRUSTED_KEYS || TRUSTED_ANNOUNCE_KEYS.size > 0) && !TRUSTED_ANNOUNCE_KEYS.has(String(payload.public_key))) {
+    console.warn(JSON.stringify({ event: "announce_untrusted_key", ip, node_id: String(payload.node_id ?? "") }));
     return response({ ok: false, error: "untrusted_key" }, 403);
   }
 
